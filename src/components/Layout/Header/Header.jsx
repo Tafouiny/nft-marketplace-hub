@@ -86,24 +86,12 @@ const Header = () => {
 
           {/* Desktop Menu */}
           <div className="header-desktop-menu">
-            <Link 
-              to="/explore"
-              className="header-link"
-            >
-              Explorer
-            </Link>
-            <Link 
-              to="/submit"
-              className="header-link"
-            >
-              Soumettre NFT
-            </Link>
             {isWalletConnected && (
-              <Link 
+              <Link
                 to="/portfolio"
                 className="header-link"
               >
-                Portfolio
+                Mon Portfolio
               </Link>
             )}
             <WalletButton />
@@ -130,27 +118,13 @@ const Header = () => {
           </button>
           
           <nav className="mobile-menu-nav">
-            <Link 
-              to="/explore"
-              className="mobile-menu-link"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Explorer
-            </Link>
-            <Link 
-              to="/submit"
-              className="mobile-menu-link"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Soumettre NFT
-            </Link>
             {isWalletConnected && (
-              <Link 
+              <Link
                 to="/portfolio"
                 className="mobile-menu-link"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                Portfolio
+                Mon Portfolio
               </Link>
             )}
             <div className="mobile-menu-wallet">

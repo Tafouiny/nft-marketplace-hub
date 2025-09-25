@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
 import './Portfolio.css';
 import NFTCard from '../../components/NFTCard/NFTCard';
-import { 
-  Wallet, 
-  Package, 
-  DollarSign, 
-  TrendingUp, 
-  Grid, 
+import {
+  Wallet,
+  Package,
+  DollarSign,
+  TrendingUp,
+  Grid,
   List,
   Filter,
   ShoppingBag,
@@ -19,26 +19,48 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle,
-  X
+  X,
+  Upload,
+  Edit,
+  Save,
+  ArrowLeft
 } from 'lucide-react';
 import { useAppContext } from '../../App';
 import { fetchUserNFTs, fetchUserListedNFTs, withdrawNFT } from '../../utils/contract';
-import { getSubmittedNFTs, removeSubmittedNFT } from '../../utils/storage';
+import { getSubmittedNFTs, removeSubmittedNFT, saveSubmittedNFT } from '../../utils/storage';
 
 const Portfolio = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isWalletConnected, walletAddress, setSelectedNFT } = useAppContext();
-  
-  const [activeTab, setActiveTab] = useState('owned');
+
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get('tab');
+    return ['owned', 'created', 'onsale', 'submitted', 'create'].includes(tab) ? tab : 'owned';
+  });
+
+  // États pour la création de NFT
+  const [isCreating, setIsCreating] = useState(false);
+  const [nftForm, setNftForm] = useState({
+    name: '',
+    description: '',
+    price: '',
+    forSale: false,
+    image: null,
+    imagePreview: null
+  });
   const [viewMode, setViewMode] = useState('grid');
   const [showValues, setShowValues] = useState(true);
   const [loading, setLoading] = useState(false);
   const [portfolioStats, setPortfolioStats] = useState({
     totalValue: 0,
+    saleValue: 0,
     totalNFTs: 0,
     onSaleCount: 0,
     createdCount: 0,
-    submittedCount: 0
+    submittedCount: 0,
+    ownedValue: 0,
+    submittedValue: 0
   });
   const [ownedNFTs, setOwnedNFTs] = useState([]);
   const [onSaleNFTs, setOnSaleNFTs] = useState([]);
@@ -88,15 +110,28 @@ const Portfolio = () => {
         nft.blockchainStatus !== 'minted' && nft.status === 'submitted'
       );
 
-      const totalValue = ownedData.reduce((sum, nft) => sum + nft.price, 0);
-      const submittedValue = activeLocalNFTs.reduce((sum, nft) => sum + (nft.price || 0), 0);
+      // Calcul amélioré des valeurs
+      const ownedValue = ownedData.reduce((sum, nft) => sum + (parseFloat(nft.price) || 0), 0);
+      const listedValue = listedData.reduce((sum, nft) => sum + (parseFloat(nft.price) || 0), 0);
+      const submittedValue = activeLocalNFTs.reduce((sum, nft) => sum + (parseFloat(nft.price) || 0), 0);
+
+      // Valeur totale = tous les NFTs possédés (pas de double comptage entre owned et listed)
+      const totalValue = ownedValue + submittedValue;
+
+      // Valeur en vente = uniquement les NFTs listés
+      const saleValue = listedValue + activeLocalNFTs
+        .filter(nft => nft.forSale)
+        .reduce((sum, nft) => sum + (parseFloat(nft.price) || 0), 0);
 
       setPortfolioStats({
-        totalValue: (totalValue + submittedValue).toFixed(4),
+        totalValue: totalValue.toFixed(6),
+        saleValue: saleValue.toFixed(6),
         totalNFTs: ownedData.length + activeLocalNFTs.length,
         onSaleCount: listedData.length + activeLocalNFTs.filter(nft => nft.forSale).length,
         createdCount: ownedData.filter(nft => nft.seller === walletAddress).length + activeLocalNFTs.length,
-        submittedCount: activeLocalNFTs.length
+        submittedCount: activeLocalNFTs.length,
+        ownedValue: ownedValue.toFixed(6),
+        submittedValue: submittedValue.toFixed(6)
       });
 
     } catch (error) {
@@ -151,6 +186,100 @@ const Portfolio = () => {
       removeSubmittedNFT(nftId);
       loadPortfolioData(); // Recharger pour mettre à jour l'affichage
     }
+  };
+
+  // Fonctions pour la création de NFT
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setNftForm(prev => ({ ...prev, image: file }));
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setNftForm(prev => ({ ...prev, imagePreview: e.target.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCreateNFT = async (e) => {
+    e.preventDefault();
+
+    if (!nftForm.name.trim()) {
+      alert('❌ Le nom du NFT est requis');
+      return;
+    }
+
+    setIsCreating(true);
+
+    try {
+      console.log('🎨 Création du NFT...', {
+        name: nftForm.name,
+        forSale: nftForm.forSale,
+        forSaleType: typeof nftForm.forSale,
+        price: nftForm.price
+      });
+
+      const nftData = {
+        name: nftForm.name.trim(),
+        description: nftForm.description.trim(),
+        price: parseFloat(nftForm.price) || 0,
+        forSale: Boolean(nftForm.forSale), // Assurer un boolean
+        imageData: nftForm.imagePreview || '/placeholder-nft.jpg',
+        owner: walletAddress,
+        seller: walletAddress,
+        status: 'submitted',
+        blockchainStatus: 'pending',
+        createdAt: new Date().toISOString(),
+        source: 'local'
+      };
+
+      console.log('💾 Données NFT à sauvegarder:', nftData);
+      console.log('🔍 Valeur forSale finale:', nftData.forSale, 'type:', typeof nftData.forSale);
+
+      // Sauvegarder en local
+      const savedNFT = saveSubmittedNFT(nftData);
+
+      if (!savedNFT) {
+        throw new Error('Échec de sauvegarde du NFT');
+      }
+
+      console.log('✅ NFT sauvegardé:', savedNFT);
+
+      // Reset du formulaire
+      setNftForm({
+        name: '',
+        description: '',
+        price: '',
+        forSale: false,
+        image: null,
+        imagePreview: null
+      });
+
+      // Recharger les données et changer d'onglet
+      await loadPortfolioData();
+      setActiveTab('submitted');
+
+      alert('✅ NFT créé avec succès dans votre collection locale !');
+
+    } catch (error) {
+      console.error('❌ Erreur création NFT:', error);
+      alert('Erreur lors de la création: ' + error.message);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const resetCreateForm = () => {
+    setNftForm({
+      name: '',
+      description: '',
+      price: '',
+      forSale: false,
+      image: null,
+      imagePreview: null
+    });
+    setActiveTab('owned');
   };
 
   const getCurrentNFTs = () => {
@@ -232,16 +361,21 @@ const Portfolio = () => {
         {/* Header du Portfolio */}
         <div className="portfolio-header">
           <div className="header-content">
-            <h1>Mon Portfolio</h1>
-            <div className="wallet-address">
-              <Wallet size={20} />
-              <span>{walletAddress}</span>
-              <button 
-                className="refresh-btn"
-                onClick={loadPortfolioData}
-                disabled={loading}
+            <div className="header-info">
+              <h1>🎨 Mon Portfolio NFT</h1>
+              <p>Créez, gérez et vendez vos œuvres numériques</p>
+            </div>
+            <div className="header-actions">
+              <div className="wallet-address">
+                <Wallet size={20} />
+                <span>{walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)}</span>
+              </div>
+              <button
+                className="btn btn-primary create-nft-btn"
+                onClick={() => setActiveTab('create')}
               >
-                <RefreshCw size={16} className={loading ? 'spinning' : ''} />
+                <Brush size={18} />
+                Créer un NFT
               </button>
             </div>
           </div>
@@ -297,6 +431,24 @@ const Portfolio = () => {
               <div className="stat-content">
                 <div className="stat-value">{portfolioStats.submittedCount}</div>
                 <div className="stat-label">Soumis</div>
+                <div className="stat-detail">
+                  {showValues ? `${portfolioStats.submittedValue} ETH` : '••• ETH'}
+                </div>
+              </div>
+            </div>
+
+            <div className="stat-card sale-highlight">
+              <div className="stat-icon">
+                <TrendingUp />
+              </div>
+              <div className="stat-content">
+                <div className="stat-value">
+                  {showValues ? `${portfolioStats.saleValue} ETH` : '•••••••'}
+                </div>
+                <div className="stat-label">Valeur en vente</div>
+                <div className="stat-detail">
+                  {portfolioStats.onSaleCount} NFT{portfolioStats.onSaleCount > 1 ? 's' : ''}
+                </div>
               </div>
             </div>
           </div>
@@ -334,12 +486,19 @@ const Portfolio = () => {
               <Tag size={18} />
               En vente ({portfolioStats.onSaleCount})
             </button>
-            <button 
+            <button
               className={`tab ${activeTab === 'submitted' ? 'active' : ''}`}
               onClick={() => setActiveTab('submitted')}
             >
               <Clock size={18} />
               Locaux ({portfolioStats.submittedCount})
+            </button>
+            <button
+              className={`tab create-tab ${activeTab === 'create' ? 'active' : ''}`}
+              onClick={() => setActiveTab('create')}
+            >
+              <Brush size={18} />
+              Créer un NFT
             </button>
           </div>
 
@@ -377,9 +536,129 @@ const Portfolio = () => {
           </div>
         )}
 
-        {/* Liste des NFTs */}
+        {/* Contenu conditionnel */}
         <div className="portfolio-content">
-          {!loading && currentNFTs.length > 0 ? (
+          {/* Formulaire de création de NFT */}
+          {activeTab === 'create' && (
+            <div className="create-nft-section">
+              <div className="create-nft-header">
+                <button
+                  className="btn btn-secondary back-btn"
+                  onClick={resetCreateForm}
+                >
+                  <ArrowLeft size={16} />
+                  Retour
+                </button>
+                <h2>🎨 Créer un nouveau NFT</h2>
+                <p>Donnez vie à votre œuvre numérique</p>
+              </div>
+
+              <div className="create-nft-form-container">
+                <form onSubmit={handleCreateNFT} className="create-nft-form">
+                  <div className="form-grid">
+                    <div className="form-left">
+                      <div className="form-group">
+                        <label>Nom du NFT *</label>
+                        <input
+                          type="text"
+                          value={nftForm.name}
+                          onChange={(e) => setNftForm(prev => ({ ...prev, name: e.target.value }))}
+                          placeholder="Ex: Mon Œuvre Unique"
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Description</label>
+                        <textarea
+                          value={nftForm.description}
+                          onChange={(e) => setNftForm(prev => ({ ...prev, description: e.target.value }))}
+                          placeholder="Décrivez votre œuvre..."
+                          rows={4}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Prix (ETH)</label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={nftForm.price}
+                          onChange={(e) => setNftForm(prev => ({ ...prev, price: e.target.value }))}
+                          placeholder="0.000"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={nftForm.forSale}
+                            onChange={(e) => setNftForm(prev => ({ ...prev, forSale: e.target.checked }))}
+                          />
+                          <span>Mettre en vente immédiatement</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="form-right">
+                      <div className="image-upload-section">
+                        <h3>Image du NFT</h3>
+                        <div className="image-upload">
+                          {nftForm.imagePreview ? (
+                            <div className="image-preview">
+                              <img src={nftForm.imagePreview} alt="Preview" />
+                              <button
+                                type="button"
+                                className="remove-image-btn"
+                                onClick={() => setNftForm(prev => ({ ...prev, image: null, imagePreview: null }))}
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="upload-placeholder">
+                              <Upload size={48} />
+                              <p>Cliquez pour ajouter une image</p>
+                              <span>PNG, JPG, GIF jusqu'à 10MB</span>
+                            </div>
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageChange}
+                            className="file-input"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={resetCreateForm}
+                      disabled={isCreating}
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={isCreating || !nftForm.name.trim()}
+                    >
+                      <Save size={16} />
+                      {isCreating ? 'Création...' : 'Créer le NFT'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Liste des NFTs */}
+          {activeTab !== 'create' && !loading && currentNFTs.length > 0 && (
             <div className={`nfts-container ${viewMode === 'grid' ? 'grid-view' : 'list-view'}`}>
               {currentNFTs.map(nft => (
                 <div key={`${nft.status || 'blockchain'}-${nft.id}`} className="portfolio-nft-wrapper">
@@ -473,9 +752,12 @@ const Portfolio = () => {
                 </div>
               ))}
             </div>
-          ) : !loading ? (
+          )}
+
+          {/* État vide pour les autres onglets */}
+          {activeTab !== 'create' && !loading && currentNFTs.length === 0 && (
             <EmptyState type={activeTab} />
-          ) : null}
+          )}
         </div>
 
         {/* Actions rapides */}

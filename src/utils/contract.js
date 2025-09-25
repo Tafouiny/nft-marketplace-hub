@@ -184,8 +184,14 @@ export const fetchMarketplaceNFTs = async () => {
             return [];
         }
         
-        const data = await contract.fetchMarketItems();
-        console.log('Données brutes fetchMarketItems:', data);
+        let data;
+        try {
+            data = await contract.fetchMarketItems();
+            console.log('Données brutes fetchMarketItems:', data);
+        } catch (fetchError) {
+            console.log('Erreur lors de fetchMarketItems (probablement aucun NFT):', fetchError.message);
+            return []; // Retourner un tableau vide si aucun NFT
+        }
         
         // Filtrer STRICTEMENT les items valides
         const validItems = data.filter(item => {
