@@ -86,13 +86,27 @@ const Header = () => {
 
           {/* Desktop Menu */}
           <div className="header-desktop-menu">
+            <Link
+              to="/explore"
+              className="header-link"
+            >
+              Explorer
+            </Link>
             {isWalletConnected && (
-              <Link
-                to="/portfolio"
-                className="header-link"
-              >
-                Mon Portfolio
-              </Link>
+              <>
+                <Link
+                  to="/portfolio"
+                  className="header-link"
+                >
+                  Portfolio
+                </Link>
+                <Link
+                  to="/submit"
+                  className="header-link"
+                >
+                  Créer NFT
+                </Link>
+              </>
             )}
             <WalletButton />
           </div>
@@ -118,14 +132,30 @@ const Header = () => {
           </button>
           
           <nav className="mobile-menu-nav">
+            <Link
+              to="/explore"
+              className="mobile-menu-link"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Explorer
+            </Link>
             {isWalletConnected && (
-              <Link
-                to="/portfolio"
-                className="mobile-menu-link"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Mon Portfolio
-              </Link>
+              <>
+                <Link
+                  to="/portfolio"
+                  className="mobile-menu-link"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Portfolio
+                </Link>
+                <Link
+                  to="/submit"
+                  className="mobile-menu-link"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Créer NFT
+                </Link>
+              </>
             )}
             <div className="mobile-menu-wallet">
               <WalletButton />

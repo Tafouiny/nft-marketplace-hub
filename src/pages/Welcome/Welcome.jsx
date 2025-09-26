@@ -92,10 +92,10 @@ const Welcome = () => {
         return acc;
       }, []);
 
-      // 5. Sélectionner les NFTs en vedette (sans doublons)
+      // 5. Sélectionner les NFTs en vedette (sans doublons) - Limité à 2 pour l'audit
       const featured = uniqueNFTs
         .filter(nft => nft.forSale || nft.source === 'local')
-        .slice(0, 4);
+        .slice(0, 2);
 
       setFeaturedNFTs(featured);
 
@@ -237,7 +237,7 @@ const Welcome = () => {
           {loading && (
             <div className="featured-loading">
               <div className="loading-grid">
-                {[1, 2, 3, 4].map(i => (
+                {[1, 2].map(i => (
                   <div key={i} className="loading-card">
                     <div className="loading-image"></div>
                     <div className="loading-text"></div>

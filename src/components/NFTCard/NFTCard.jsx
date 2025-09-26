@@ -1,15 +1,49 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './NFTCard.css';
 import { TrendingUp, Clock, Heart, Eye } from 'lucide-react';
 import { getNFTImageUrl } from '../../utils/ipfsHelpers';
+import {
+  toggleNFTLike,
+  hasUserLikedNFT,
+  getNFTLikesCount,
+  getNFTViewsCount,
+  incrementNFTViews
+} from '../../utils/storage';
+import { useAppContext } from '../../App';
 
 const NFTCard = ({ nft, badge, onClick }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [viewsCount, setViewsCount] = useState(0);
+  const { walletAddress } = useAppContext();
+
+  // Charger l'état initial des likes et vues
+  useEffect(() => {
+    const userLiked = hasUserLikedNFT(nft, walletAddress || 'anonymous');
+    const likes = getNFTLikesCount(nft);
+    const views = getNFTViewsCount(nft);
+
+    setIsLiked(userLiked);
+    setLikesCount(likes);
+    setViewsCount(views);
+  }, [nft, walletAddress]);
 
   const handleLike = (e) => {
     e.stopPropagation();
-    setIsLiked(!isLiked);
+
+    const result = toggleNFTLike(nft, walletAddress || 'anonymous');
+    setIsLiked(result.isLiked);
+    setLikesCount(result.totalLikes);
+  };
+
+  const handleCardClick = () => {
+    if (onClick) {
+      // Incrémenter les vues quand on clique sur la carte
+      const newViews = incrementNFTViews(nft);
+      setViewsCount(newViews);
+      onClick(nft);
+    }
   };
 
   const renderBadge = () => {
@@ -40,11 +74,11 @@ const NFTCard = ({ nft, badge, onClick }) => {
   };
 
   return (
-    <div 
+    <div
       className={`nft-card ${isHovered ? 'nft-card-hover' : ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={() => onClick && onClick(nft)}
+      onClick={handleCardClick}
       style={{ cursor: onClick ? 'pointer' : 'default' }}
     >
       <div className="nft-card-image-container">
@@ -58,11 +92,11 @@ const NFTCard = ({ nft, badge, onClick }) => {
         <div className="nft-card-overlay">
           <button className="nft-card-action" onClick={handleLike}>
             <Heart size={20} fill={isLiked ? '#EF4444' : 'none'} color={isLiked ? '#EF4444' : '#fff'} />
-            <span>{nft.likes + (isLiked ? 1 : 0)}</span>
+            <span>{likesCount}</span>
           </button>
           <button className="nft-card-action">
             <Eye size={20} />
-            <span>{nft.views}</span>
+            <span>{viewsCount}</span>
           </button>
         </div>
       </div>

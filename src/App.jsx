@@ -6,7 +6,9 @@ import './App.css';
 import Header from './components/Layout/Header/Header.jsx';
 
 // Pages
-import Home from './pages/Home/Home.jsx';
+import Welcome from './pages/Welcome/Welcome.jsx';
+import Explore from './pages/Explore/Explore.jsx';
+import SubmitNFT from './pages/SubmitNFT/SubmitNFT.jsx';
 import NFTDetail from './pages/NFTDetail/NFTDetail.jsx';
 import Portfolio from './pages/Portfolio/Portfolio.jsx';
 import TestIPFS from './pages/TestIPFS/TestIPFS.jsx';
@@ -211,7 +213,13 @@ function App() {
           <Header />
           <main className="app-main">
             <Routes>
-              <Route path="/" element={<Home />} />
+              <Route path="/" element={<Welcome />} />
+              <Route path="/explore" element={<Explore />} />
+              <Route path="/submit" element={
+                <PrivateRoute>
+                  <SubmitNFT />
+                </PrivateRoute>
+              } />
               <Route path="/nft/:id" element={<NFTDetail />} />
               <Route path="/test-ipfs" element={<TestIPFS />} />
               <Route path="/diagnostic" element={<DiagnosticTest />} />
