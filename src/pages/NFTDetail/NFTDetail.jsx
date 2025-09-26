@@ -26,6 +26,7 @@ import { getNFTDetails, withdrawNFT, listNFTForSale, buyNFT, getNFTHistory } fro
 import { getSubmittedNFTs, updateSubmittedNFT } from '../../utils/storage';
 import { ethers } from 'ethers';
 import contractAddresses from '../../contracts/contract-address.json';
+import NFTStats from '../../components/NFTStats/NFTStats';
 
 const NFTDetail = () => {
   const { id } = useParams();
@@ -483,14 +484,24 @@ const handleMigrateToBlockchain = async () => {
 
             {/* Prix et actions */}
             <div className="price-section">
-              <div className="price-info">
-                <span className="price-label">Prix</span>
-                <div className="price-value">
-                  <DollarSign size={24} />
-                  <span className="price-amount">{nft.price || 0}</span>
-                  <span className="price-currency">ETH</span>
+              {nft.forSale ? (
+                <div className="price-info">
+                  <span className="price-label">Prix</span>
+                  <div className="price-value">
+                    <DollarSign size={24} />
+                    <span className="price-amount">{nft.price || 0}</span>
+                    <span className="price-currency">ETH</span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="price-info">
+                  <span className="price-label">Statut</span>
+                  <div className="price-value not-for-sale">
+                    <AlertCircle size={24} />
+                    <span className="status-text">Pas en vente</span>
+                  </div>
+                </div>
+              )}
 
               {/* Actions selon le type de NFT et propriétaire */}
               <div className="action-buttons">
@@ -551,13 +562,26 @@ const handleMigrateToBlockchain = async () => {
                             {isProcessing ? 'Achat en cours...' : 'Acheter maintenant'}
                           </button>
                         ) : (
-                          <p>Ce NFT n'est pas en vente</p>
+                          <div className="not-for-sale-message">
+                            <AlertCircle size={18} />
+                            <span>Ce NFT n'est pas disponible à la vente</span>
+                          </div>
                         )}
                       </div>
                     )}
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Stats de likes et vues */}
+            <div className="nft-detail-stats">
+              <NFTStats
+                nftId={nft.tokenId || nft.id}
+                showLikes={true}
+                showViews={true}
+                incrementViewOnMount={true}
+              />
             </div>
 
             {/* Description */}

@@ -2,7 +2,9 @@
   "name": "nft-marketplace",
   "version": "0.0.0",
   "scripts": {
-    "dev": "vite",
+    "dev": "node start-dev.js",
+    "dev:frontend": "vite --port 8080",
+    "dev:likes": "node start-likes.js",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -17,7 +19,9 @@
     "@openzeppelin/contracts": "^4.9.6",
     "@vitejs/plugin-react": "^5.0.2",
     "axios": "^1.12.2",
+    "cors": "^2.8.5",
     "ethers": "^5.8.0",
+    "express": "^5.1.0",
     "form-data": "^4.0.4",
     "lucide-react": "^0.542.0",
     "react": "^19.1.1",

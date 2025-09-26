@@ -39,10 +39,12 @@ const Explore = () => {
     setError('');
     
     try {
-      // 1. Charger les NFTs de la blockchain
-      const marketplaceNFTs = await fetchMarketplaceNFTs().catch(err => {
-        console.warn('Erreur chargement marketplace blockchain:', err);
-        return [];
+      // 1. Charger TOUS les NFTs de la blockchain (y compris ceux vendus)
+      const { fetchAllNFTs } = await import('../../utils/contract');
+      const marketplaceNFTs = await fetchAllNFTs().catch(err => {
+        console.warn('Erreur chargement tous NFTs blockchain:', err);
+        // Fallback: essayer avec fetchMarketplaceNFTs seulement
+        return fetchMarketplaceNFTs().catch(() => []);
       });
 
       // 2. Charger les NFTs soumis localement
@@ -110,6 +112,14 @@ const Explore = () => {
     if (showOnlyForSale) {
       filtered = filtered.filter(nft => nft.forSale);
     }
+
+    // Tri par date (plus récent au plus ancien)
+    filtered.sort((a, b) => {
+      // Utiliser tokenId comme proxy pour la date de création (plus grand = plus récent)
+      const aId = parseInt(a.tokenId || a.id || 0);
+      const bId = parseInt(b.tokenId || b.id || 0);
+      return bId - aId; // Ordre décroissant (plus récent en premier)
+    });
 
     setFilteredNfts(filtered);
     setCurrentPage(1);

@@ -1,5 +1,13 @@
 import { ethers } from 'ethers';
 
+// Utilitaire pour formatter les prix avec précision
+const formatPriceWithPrecision = (priceInWei) => {
+  if (!priceInWei) return 0;
+  const ethValue = ethers.utils.formatEther(priceInWei);
+  // Utiliser toFixed puis Number pour éliminer les erreurs de précision flottante
+  return Number(Number(ethValue).toFixed(6));
+};
+
 // Adresse de votre contrat déployé
 import contractAddresses from '../contracts/contract-address.json';
 const CONTRACT_ADDRESS = contractAddresses.NFTMarketplace;
@@ -18,6 +26,7 @@ const CONTRACT_ABI = [
     "function getTokenCreator(uint256 tokenId) public view returns (address)",
     "function getMarketItem(uint256 tokenId) public view returns (tuple(uint256 tokenId, address seller, address owner, uint256 price, bool sold, bool listed))",
     "function totalSupply() public view returns (uint256)",
+    "function tokenByIndex(uint256 index) public view returns (uint256)",
     "event MarketItemCreated(uint256 indexed tokenId, address seller, address owner, uint256 price, bool sold)",
     "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
     "event MarketItemSold(uint256 indexed tokenId, address seller, address buyer, uint256 price)"
@@ -150,7 +159,7 @@ const processMarketItem = async (contract, item) => {
             name: localNFT ? localNFT.name : (metadata.name || `NFT #${tokenId}`),
             description: localNFT ? localNFT.description : (metadata.description || "NFT disponible sur le marketplace"),
             image: localNFT ? localNFT.image : metadata.image,
-            price: parseFloat(ethers.utils.formatEther(item.price || 0)),
+            price: formatPriceWithPrecision(item.price || 0),
             owner: item.owner || 'Inconnu',
             seller: item.seller || 'Inconnu',
             sold: item.sold || false,
@@ -447,7 +456,8 @@ export const getNFTDetails = async (tokenId) => {
         ]);
         
         if (!tokenURI) {
-            throw new Error('NFT non trouvé ou inaccessible');
+            // Log discret pour les NFTs non trouvés
+            return null; // Retourner null au lieu de throw pour éviter de casser fetchAllNFTs
         }
         
         // Parser les métadonnées avec gestion d'erreur robuste
@@ -512,7 +522,7 @@ export const getNFTDetails = async (tokenId) => {
             name: localNFT ? localNFT.name : (metadata.name || `NFT #${tokenId}`),
             description: localNFT ? localNFT.description : (metadata.description || ""),
             image: localNFT ? localNFT.image : metadata.image, // Utiliser la vraie image si disponible
-            price: marketItem ? parseFloat(ethers.utils.formatEther(marketItem.price)) : 0,
+            price: marketItem ? formatPriceWithPrecision(marketItem.price) : 0,
             owner: marketItem ? marketItem.owner : creator,
             seller: marketItem ? marketItem.seller : null,
             creator: creator || 'Inconnu',
@@ -536,8 +546,8 @@ export const getNFTDetails = async (tokenId) => {
             ]
         };
     } catch (error) {
-        console.error('Erreur getNFTDetails:', error);
-        throw error;
+        console.warn(`getNFTDetails #${tokenId} échoué:`, error.message);
+        return null; // Retourner null au lieu de throw pour éviter de casser fetchAllNFTs
     }
 };
 
@@ -583,7 +593,7 @@ export const getNFTHistory = async (tokenId) => {
 
             if (saleEvent) {
                 eventType = 'sale';
-                price = parseFloat(ethers.utils.formatEther(saleEvent.args.price));
+                price = formatPriceWithPrecision(saleEvent.args.price);
             }
 
             history.push({
@@ -611,7 +621,7 @@ export const getNFTHistory = async (tokenId) => {
                     type: 'listed',
                     from: event.args.seller,
                     to: null,
-                    price: parseFloat(ethers.utils.formatEther(event.args.price)),
+                    price: formatPriceWithPrecision(event.args.price),
                     timestamp: block.timestamp,
                     date: new Date(block.timestamp * 1000).toLocaleDateString('fr-FR'),
                     time: new Date(block.timestamp * 1000).toLocaleTimeString('fr-FR'),
@@ -630,5 +640,81 @@ export const getNFTHistory = async (tokenId) => {
     } catch (error) {
         console.error('Erreur getNFTHistory:', error);
         return [];
+    }
+};
+
+// Récupérer TOUS les NFTs (y compris ceux vendus et non en vente)
+export const fetchAllNFTs = async () => {
+    try {
+        const { contract, provider } = await getContract();
+        const allNFTs = [];
+
+        console.log('Récupération de tous les NFTs...');
+
+        // Méthode 1: Essayer d'utiliser totalSupply + tokenByIndex
+        try {
+            const totalSupply = await contract.totalSupply();
+            console.log(`Total supply: ${totalSupply}`);
+
+            for (let i = 0; i < totalSupply; i++) {
+                try {
+                    const tokenId = await contract.tokenByIndex(i);
+                    const nftDetails = await getNFTDetails(tokenId.toString());
+                    if (nftDetails) {
+                        allNFTs.push(nftDetails);
+                    }
+                } catch (error) {
+                    console.warn(`Erreur récupération NFT index ${i}:`, error.message);
+                    continue;
+                }
+            }
+        } catch (error) {
+            console.warn('tokenByIndex non disponible, utilisation méthode alternative:', error.message);
+
+            // Méthode 2: Parcourir les tokenIds séquentiellement (jusqu'à trouver des trous)
+            console.log('Utilisation du parcours séquentiel des tokenIds...');
+            let tokenId = 1;
+            let consecutiveErrors = 0;
+            const maxConsecutiveErrors = 2; // Réduire encore plus
+            const maxTokenId = 15; // Limiter davantage la recherche
+
+            while (consecutiveErrors < maxConsecutiveErrors && tokenId <= maxTokenId) {
+                try {
+                    const nftDetails = await getNFTDetails(tokenId.toString());
+                    if (nftDetails) {
+                        allNFTs.push(nftDetails);
+                        consecutiveErrors = 0; // Réinitialiser le compteur d'erreurs
+                        console.log(`✅ NFT #${tokenId} trouvé: ${nftDetails.name}`);
+                    }
+                } catch (error) {
+                    consecutiveErrors++;
+                    // Log discret pour éviter trop de messages
+                }
+                tokenId++;
+            }
+
+            if (consecutiveErrors >= maxConsecutiveErrors) {
+                console.log(`⏹️ Arrêt après ${maxConsecutiveErrors} erreurs consécutives`);
+            }
+        }
+
+        console.log(`Total NFTs récupérés: ${allNFTs.length}`);
+
+        // Séparer les NFTs vendus et en vente pour debug
+        const forSale = allNFTs.filter(nft => nft.forSale);
+        const sold = allNFTs.filter(nft => !nft.forSale && nft.price > 0);
+        const owned = allNFTs.filter(nft => !nft.forSale && nft.price === 0);
+
+        console.log(`- En vente: ${forSale.length}`);
+        console.log(`- Vendus: ${sold.length}`);
+        console.log(`- Possédés: ${owned.length}`);
+
+        return allNFTs;
+
+    } catch (error) {
+        console.error('Erreur fetchAllNFTs:', error);
+        // Fallback vers fetchMarketplaceNFTs
+        console.log('Fallback vers fetchMarketplaceNFTs');
+        return await fetchMarketplaceNFTs();
     }
 };

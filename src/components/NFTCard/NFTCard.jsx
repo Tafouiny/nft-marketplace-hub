@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
 import './NFTCard.css';
-import { TrendingUp, Clock, Heart, Eye } from 'lucide-react';
+import { TrendingUp, Clock } from 'lucide-react';
 import { getNFTImageUrl } from '../../utils/ipfsHelpers';
+import NFTStats from '../NFTStats/NFTStats';
 
 const NFTCard = ({ nft, badge, onClick }) => {
   const [isHovered, setIsHovered] = useState(false);
-  const [isLiked, setIsLiked] = useState(false);
-
-  const handleLike = (e) => {
-    e.stopPropagation();
-    setIsLiked(!isLiked);
-  };
 
   const renderBadge = () => {
     if (!badge) return null;
@@ -56,14 +51,7 @@ const NFTCard = ({ nft, badge, onClick }) => {
         {renderBadge()}
         
         <div className="nft-card-overlay">
-          <button className="nft-card-action" onClick={handleLike}>
-            <Heart size={20} fill={isLiked ? '#EF4444' : 'none'} color={isLiked ? '#EF4444' : '#fff'} />
-            <span>{nft.likes + (isLiked ? 1 : 0)}</span>
-          </button>
-          <button className="nft-card-action">
-            <Eye size={20} />
-            <span>{nft.views}</span>
-          </button>
+          {/* Les stats sont maintenant gérées en bas de la carte */}
         </div>
       </div>
       
@@ -79,14 +67,29 @@ const NFTCard = ({ nft, badge, onClick }) => {
         </div>
         
         <div className="nft-card-footer">
-          <div className="nft-card-price">
-            <span className="nft-card-price-label">Prix actuel</span>
-            <span className="nft-card-price-value">{nft.price} ETH</span>
-          </div>
+          {nft.forSale ? (
+            <div className="nft-card-price">
+              <span className="nft-card-price-label">Prix actuel</span>
+              <span className="nft-card-price-value">{nft.price} ETH</span>
+            </div>
+          ) : (
+            <div className="nft-card-status">
+              <span className="nft-card-status-label">Statut</span>
+              <span className="nft-card-status-value">Pas en vente</span>
+            </div>
+          )}
           {nft.category && (
             <span className="nft-card-category">{nft.category}</span>
           )}
         </div>
+
+        {/* Stats de likes et vues */}
+        <NFTStats
+          nftId={nft.tokenId || nft.id}
+          showLikes={true}
+          showViews={true}
+          incrementViewOnMount={false}
+        />
       </div>
     </div>
   );

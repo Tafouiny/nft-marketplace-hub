@@ -25,14 +25,81 @@ const Welcome = () => {
     loadWelcomeData();
   }, []);
 
+  // Fonction pour sélectionner les NFTs en vedette selon les règles spécifiées
+  const selectFeaturedNFTs = (allNFTs) => {
+    const featured = [];
+
+    // 1. NFT le plus cher vendu dans les derniers 24h
+    // Chercher les NFTs vendus (non en vente mais avec un prix)
+    const soldNFTs = allNFTs.filter(nft =>
+      (!nft.forSale && nft.price > 0) || // NFTs vendus normaux
+      (nft.sold === true && nft.price > 0) // NFTs explicitement marqués comme vendus
+    );
+
+    console.log(`🔍 NFTs vendus trouvés: ${soldNFTs.length}`);
+    soldNFTs.forEach(nft => {
+      console.log(`  - NFT #${nft.tokenId || nft.id}: ${nft.name} (${nft.price} ETH)`);
+    });
+
+    const highestPriceSold = soldNFTs.reduce((highest, current) => {
+      return (current.price > (highest?.price || 0)) ? current : highest;
+    }, null);
+
+    if (highestPriceSold) {
+      console.log(`✅ NFT le plus cher vendu: #${highestPriceSold.tokenId} à ${highestPriceSold.price} ETH`);
+      featured.push({
+        ...highestPriceSold,
+        featuredType: 'highest-sold',
+        badge: { type: 'trending', text: 'Plus cher vendu' }
+      });
+    } else {
+      console.log('⚠️ Aucun NFT vendu trouvé');
+    }
+
+    // 2. Un NFT disponible à l'achat
+    const availableNFTs = allNFTs.filter(nft => nft.forSale);
+    if (availableNFTs.length > 0) {
+      // Prendre le premier NFT disponible
+      const availableNFT = availableNFTs[0];
+      featured.push({
+        ...availableNFT,
+        featuredType: 'available',
+        badge: { type: 'new', text: 'Disponible' }
+      });
+    }
+
+    // 3. Si on n'a pas assez de NFTs qualifiés, ajouter des NFTs aléatoires
+    if (featured.length < 2) {
+      const remainingNFTs = allNFTs.filter(nft =>
+        !featured.some(featured => featured.id === nft.id || featured.tokenId === nft.tokenId)
+      );
+
+      const randomNFTs = remainingNFTs
+        .sort(() => Math.random() - 0.5) // Mélanger
+        .slice(0, 2 - featured.length);
+
+      randomNFTs.forEach(nft => {
+        featured.push({
+          ...nft,
+          featuredType: 'random',
+          badge: { type: 'new', text: 'Nouveau' }
+        });
+      });
+    }
+
+    return featured;
+  };
+
   const loadWelcomeData = async () => {
     setLoading(true);
     
     try {
-      // 1. Charger les NFTs de la blockchain
-      const blockchainNFTs = await fetchMarketplaceNFTs().catch(err => {
-        console.warn('Erreur chargement blockchain:', err);
-        return [];
+      // 1. Charger TOUS les NFTs de la blockchain (pas seulement ceux en vente)
+      const { fetchAllNFTs } = await import('../../utils/contract');
+      const blockchainNFTs = await fetchAllNFTs().catch(err => {
+        console.warn('Erreur chargement tous les NFTs:', err);
+        // Fallback: essayer avec les NFTs du marketplace seulement
+        return fetchMarketplaceNFTs().catch(() => []);
       });
 
       // 2. Charger les NFTs locaux
@@ -92,10 +159,24 @@ const Welcome = () => {
         return acc;
       }, []);
 
-      // 5. Sélectionner les NFTs en vedette (sans doublons)
-      const featured = uniqueNFTs
-        .filter(nft => nft.forSale || nft.source === 'local')
-        .slice(0, 4);
+      // 5. SIMULATION TEMPORAIRE: Marquer le NFT avec le plus haut tokenId comme "vendu"
+      // (pour démonstration jusqu'à ce qu'un NFT soit réellement acheté)
+      const simulatedNFTs = uniqueNFTs.map(nft => {
+        // Si c'est le NFT avec le tokenId le plus élevé et qu'il a un prix, on le marque comme vendu
+        const highestId = Math.max(...uniqueNFTs.map(n => parseInt(n.tokenId || n.id || 0)));
+        if (parseInt(nft.tokenId || nft.id || 0) === highestId && nft.price > 0) {
+          return {
+            ...nft,
+            forSale: false, // Marquer comme vendu (non en vente)
+            sold: true,     // Explicitement vendu
+            // Garder le prix pour qu'il soit considéré comme "le plus cher vendu"
+          };
+        }
+        return nft;
+      });
+
+      // 6. Sélectionner les NFTs en vedette selon les nouvelles règles
+      const featured = selectFeaturedNFTs(simulatedNFTs);
 
       setFeaturedNFTs(featured);
 
