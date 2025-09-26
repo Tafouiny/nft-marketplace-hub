@@ -18,6 +18,9 @@ const CONTRACT_ABI = [
     "function getTokenCreator(uint256 tokenId) public view returns (address)",
     "function getMarketItem(uint256 tokenId) public view returns (tuple(uint256 tokenId, address seller, address owner, uint256 price, bool sold, bool listed))",
     "function totalSupply() public view returns (uint256)",
+    "function getMostExpensiveNFTLast24h() public view returns (tuple(uint256 tokenId, uint256 price, address seller, address buyer, uint256 timestamp))",
+    "function getRecentSales(uint256 limit) public view returns (tuple(uint256 tokenId, uint256 price, address seller, address buyer, uint256 timestamp)[])",
+    "function getTotalSalesCount() public view returns (uint256)",
     "event MarketItemCreated(uint256 indexed tokenId, address seller, address owner, uint256 price, bool sold)",
     "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
     "event MarketItemSold(uint256 indexed tokenId, address seller, address buyer, uint256 price)"
@@ -635,6 +638,70 @@ export const getNFTHistory = async (tokenId) => {
 
     } catch (error) {
         console.error('Erreur getNFTHistory:', error);
+        return [];
+    }
+};
+
+// Obtenir le NFT vendu le plus cher dans les dernières 24h
+export const getMostExpensiveNFTLast24h = async () => {
+    try {
+        const { contract } = await getContractReadOnly();
+        const saleRecord = await contract.getMostExpensiveNFTLast24h();
+
+        // Vérifier si on a trouvé une vente
+        if (!saleRecord.tokenId || saleRecord.tokenId.toNumber() === 0) {
+            return null;
+        }
+
+        const tokenId = saleRecord.tokenId.toNumber();
+        const price = parseFloat(ethers.utils.formatEther(saleRecord.price));
+
+        // Récupérer les détails du NFT
+        const nftDetails = await getNFTDetails(tokenId);
+
+        return {
+            ...nftDetails,
+            salePrice: price,
+            seller: saleRecord.seller,
+            buyer: saleRecord.buyer,
+            saleTimestamp: saleRecord.timestamp.toNumber(),
+            saleDate: new Date(saleRecord.timestamp.toNumber() * 1000).toISOString()
+        };
+    } catch (error) {
+        console.error('Erreur getMostExpensiveNFTLast24h:', error);
+        return null;
+    }
+};
+
+// Obtenir les ventes récentes
+export const getRecentSales = async (limit = 10) => {
+    try {
+        const { contract } = await getContractReadOnly();
+        const salesRecords = await contract.getRecentSales(limit);
+
+        const sales = [];
+        for (const record of salesRecords) {
+            try {
+                const tokenId = record.tokenId.toNumber();
+                const price = parseFloat(ethers.utils.formatEther(record.price));
+                const nftDetails = await getNFTDetails(tokenId);
+
+                sales.push({
+                    ...nftDetails,
+                    salePrice: price,
+                    seller: record.seller,
+                    buyer: record.buyer,
+                    saleTimestamp: record.timestamp.toNumber(),
+                    saleDate: new Date(record.timestamp.toNumber() * 1000).toISOString()
+                });
+            } catch (nftError) {
+                console.warn(`Erreur récupération NFT ${record.tokenId}:`, nftError);
+            }
+        }
+
+        return sales;
+    } catch (error) {
+        console.error('Erreur getRecentSales:', error);
         return [];
     }
 };

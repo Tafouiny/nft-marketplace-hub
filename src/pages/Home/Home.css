@@ -504,3 +504,106 @@
     padding: 2rem;
   }
 }
+
+/* Featured NFTs Section */
+.featured-section {
+  margin: 3rem 0 4rem 0;
+  background: rgba(255,255,255,0.1);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  padding: 3rem;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+.featured-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: white;
+  text-align: center;
+  margin-bottom: 2rem;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.featured-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 2rem;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.featured-item {
+  background: rgba(255,255,255,0.1);
+  border-radius: 15px;
+  padding: 2rem;
+  text-align: center;
+  border: 1px solid rgba(255,255,255,0.2);
+  backdrop-filter: blur(10px);
+}
+
+.featured-subtitle {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 1.5rem;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.featured-nft {
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.featured-nft:hover {
+  transform: translateY(-5px);
+}
+
+.featured-info {
+  margin-top: 1rem;
+  color: white;
+  font-size: 1rem;
+}
+
+.featured-info p {
+  margin: 0.5rem 0;
+}
+
+.featured-date {
+  opacity: 0.8;
+  font-size: 0.9rem;
+}
+
+.featured-loading {
+  color: white;
+  font-size: 1rem;
+  padding: 3rem 0;
+  opacity: 0.8;
+}
+
+.featured-empty {
+  color: white;
+  font-size: 1rem;
+  padding: 3rem 0;
+  opacity: 0.6;
+}
+
+/* Responsive adjustments for featured section */
+@media (max-width: 768px) {
+  .featured-section {
+    padding: 2rem 1rem;
+    margin: 2rem 0 3rem 0;
+  }
+
+  .featured-title {
+    font-size: 2rem;
+  }
+
+  .featured-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .featured-item {
+    padding: 1.5rem;
+  }
+}

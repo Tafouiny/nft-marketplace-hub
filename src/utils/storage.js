@@ -74,9 +74,10 @@ export const clearSubmittedNFTs = () => {
   }
 };
 
-// === SYSTÈME DE LIKES PERSISTANT ===
+// === SYSTÈME DE LIKES ET VUES PERSISTANT ===
 const LIKES_STORAGE_KEY = 'nft_marketplace_likes';
 const VIEWS_STORAGE_KEY = 'nft_marketplace_views';
+const VIEW_TIMER_STORAGE_KEY = 'nft_marketplace_view_timers';
 
 // Obtenir l'ID unique d'un NFT (blockchain ou local)
 const getNFTUniqueId = (nft) => {
@@ -171,15 +172,50 @@ export const getNFTLikesCount = (nft) => {
   }
 };
 
-// Incrémenter les vues d'un NFT
-export const incrementNFTViews = (nft) => {
+// Récupérer les timers de vues stockés
+const getViewTimersData = () => {
+  try {
+    const stored = localStorage.getItem(VIEW_TIMER_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch (error) {
+    console.error('Erreur récupération timers vues:', error);
+    return {};
+  }
+};
+
+// Incrémenter les vues d'un NFT avec timer de 10 secondes par utilisateur
+export const incrementNFTViews = (nft, walletAddress = 'anonymous') => {
   try {
     const nftId = getNFTUniqueId(nft);
     const viewsData = getViewsData();
+    const timersData = getViewTimersData();
+    const userKey = `${nftId}-${walletAddress}`;
+    const now = Date.now();
 
+    // Vérifier si l'utilisateur a vu ce NFT récemment (moins de 10 secondes)
+    if (timersData[userKey] && (now - timersData[userKey]) < 10000) {
+      console.log(`Timer de vue actif pour ${userKey}, vue ignorée`);
+      return viewsData[nftId] || 0;
+    }
+
+    // Incrémenter les vues
     viewsData[nftId] = (viewsData[nftId] || 0) + 1;
-    localStorage.setItem(VIEWS_STORAGE_KEY, JSON.stringify(viewsData));
 
+    // Enregistrer le timestamp de cette vue
+    timersData[userKey] = now;
+
+    // Nettoyer les anciens timers (plus de 1 heure)
+    const oneHourAgo = now - (60 * 60 * 1000);
+    Object.keys(timersData).forEach(key => {
+      if (timersData[key] < oneHourAgo) {
+        delete timersData[key];
+      }
+    });
+
+    localStorage.setItem(VIEWS_STORAGE_KEY, JSON.stringify(viewsData));
+    localStorage.setItem(VIEW_TIMER_STORAGE_KEY, JSON.stringify(timersData));
+
+    console.log(`Vue incrémentée pour ${nftId} par ${walletAddress}: ${viewsData[nftId]}`);
     return viewsData[nftId];
   } catch (error) {
     console.error('Erreur incrémentation vues:', error);
@@ -197,5 +233,98 @@ export const getNFTViewsCount = (nft) => {
   } catch (error) {
     console.error('Erreur récupération vues:', error);
     return 0;
+  }
+};
+
+// Obtenir le NFT le plus liké parmi tous les NFTs
+export const getMostLikedNFT = () => {
+  try {
+    const likesData = getLikesData();
+    const submittedNFTs = getSubmittedNFTs();
+
+    let maxLikes = 0;
+    let mostLikedNFTId = null;
+
+    // Trouver le NFT avec le plus de likes
+    Object.keys(likesData).forEach(nftId => {
+      if (likesData[nftId].count > maxLikes) {
+        maxLikes = likesData[nftId].count;
+        mostLikedNFTId = nftId;
+      }
+    });
+
+    if (!mostLikedNFTId || maxLikes === 0) {
+      return null;
+    }
+
+    // Récupérer les données du NFT
+    if (mostLikedNFTId.startsWith('local-')) {
+      const localId = mostLikedNFTId.replace('local-', '');
+      const nft = submittedNFTs.find(nft => nft.id.toString() === localId);
+      if (nft) {
+        return {
+          ...nft,
+          likesCount: maxLikes,
+          source: 'local'
+        };
+      }
+    } else if (mostLikedNFTId.startsWith('blockchain-')) {
+      // Pour les NFTs blockchain, on retourne juste l'ID et le count
+      // Le composant devra faire appel à getNFTDetails pour récupérer les détails complets
+      const tokenId = mostLikedNFTId.replace('blockchain-', '');
+      return {
+        tokenId: parseInt(tokenId),
+        likesCount: maxLikes,
+        source: 'blockchain'
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Erreur récupération NFT le plus liké:', error);
+    return null;
+  }
+};
+
+// Obtenir tous les NFTs triés par nombre de likes
+export const getNFTsByLikes = (limit = 10) => {
+  try {
+    const likesData = getLikesData();
+    const submittedNFTs = getSubmittedNFTs();
+
+    // Créer une liste des NFTs avec leurs likes
+    const nftsWithLikes = [];
+
+    Object.keys(likesData).forEach(nftId => {
+      const likesCount = likesData[nftId].count;
+
+      if (nftId.startsWith('local-')) {
+        const localId = nftId.replace('local-', '');
+        const nft = submittedNFTs.find(nft => nft.id.toString() === localId);
+        if (nft) {
+          nftsWithLikes.push({
+            ...nft,
+            likesCount,
+            source: 'local'
+          });
+        }
+      } else if (nftId.startsWith('blockchain-')) {
+        const tokenId = nftId.replace('blockchain-', '');
+        nftsWithLikes.push({
+          tokenId: parseInt(tokenId),
+          likesCount,
+          source: 'blockchain'
+        });
+      }
+    });
+
+    // Trier par nombre de likes décroissant
+    nftsWithLikes.sort((a, b) => b.likesCount - a.likesCount);
+
+    // Limiter le nombre de résultats
+    return nftsWithLikes.slice(0, limit);
+  } catch (error) {
+    console.error('Erreur récupération NFTs par likes:', error);
+    return [];
   }
 };

@@ -1,75 +1,61 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Test Connection MetaMask</title>
+    <title>Test de Connexion Hardhat</title>
+    <script src="https://cdn.ethers.io/lib/ethers-5.6.9.umd.min.js"></script>
 </head>
 <body>
-    <h1>Test de connexion MetaMask</h1>
-    <button onclick="testConnection()">Tester la connexion</button>
-    <div id="result"></div>
+    <h1>Test de Connexion au Réseau Hardhat</h1>
+    <div id="status"></div>
+    <button onclick="testConnection()">Tester la Connexion</button>
 
     <script>
         async function testConnection() {
-            const result = document.getElementById('result');
-            result.innerHTML = '<p>Test en cours...</p>';
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = 'Test en cours...';
 
             try {
-                if (typeof window.ethereum === 'undefined') {
-                    result.innerHTML = '<p style="color: red;">MetaMask non détecté</p>';
-                    return;
+                // Test 1: Connexion directe au provider
+                const provider = new ethers.providers.JsonRpcProvider('http://127.0.0.1:8545');
+                const network = await provider.getNetwork();
+                statusDiv.innerHTML += `<br>✅ Réseau connecté: ${network.name} (ChainId: ${network.chainId})`;
+
+                // Test 2: Vérifier les comptes disponibles
+                const accounts = await provider.listAccounts();
+                statusDiv.innerHTML += `<br>✅ Comptes disponibles: ${accounts.length}`;
+                statusDiv.innerHTML += `<br>Premier compte: ${accounts[0]}`;
+
+                // Test 3: Vérifier le solde
+                const balance = await provider.getBalance(accounts[0]);
+                statusDiv.innerHTML += `<br>✅ Solde: ${ethers.utils.formatEther(balance)} ETH`;
+
+                // Test 4: Tester MetaMask si disponible
+                if (typeof window.ethereum !== 'undefined') {
+                    statusDiv.innerHTML += `<br>✅ MetaMask détecté`;
+
+                    try {
+                        await window.ethereum.request({ method: 'eth_requestAccounts' });
+                        const metamaskProvider = new ethers.providers.Web3Provider(window.ethereum);
+                        const metamaskNetwork = await metamaskProvider.getNetwork();
+                        statusDiv.innerHTML += `<br>✅ MetaMask réseau: ${metamaskNetwork.name} (ChainId: ${metamaskNetwork.chainId})`;
+
+                        if (metamaskNetwork.chainId !== 1337) {
+                            statusDiv.innerHTML += `<br>⚠️ MetaMask n'est PAS sur le bon réseau! Devrait être 1337`;
+                        }
+                    } catch (metamaskError) {
+                        statusDiv.innerHTML += `<br>❌ Erreur MetaMask: ${metamaskError.message}`;
+                    }
+                } else {
+                    statusDiv.innerHTML += `<br>❌ MetaMask non détecté`;
                 }
 
-                // Demander la connexion
-                await window.ethereum.request({ method: 'eth_requestAccounts' });
-
-                // Obtenir l'adresse
-                const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-                const account = accounts[0];
-
-                // Obtenir le chain ID
-                const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-
-                // Obtenir le solde
-                const balance = await window.ethereum.request({
-                    method: 'eth_getBalance',
-                    params: [account, 'latest']
-                });
-
-                // Obtenir le numéro de bloc actuel
-                const blockNumber = await window.ethereum.request({
-                    method: 'eth_blockNumber'
-                });
-
-                result.innerHTML = `
-                    <div style="color: green;">
-                        <h3>✅ Connexion réussie !</h3>
-                        <p><strong>Adresse :</strong> ${account}</p>
-                        <p><strong>Chain ID :</strong> ${parseInt(chainId, 16)} (0x${parseInt(chainId, 16).toString(16)})</p>
-                        <p><strong>Solde :</strong> ${parseInt(balance, 16) / 1e18} ETH</p>
-                        <p><strong>Bloc actuel :</strong> ${parseInt(blockNumber, 16)}</p>
-                    </div>
-                `;
-
-                // Test d'appel de contrat
-                const contractAddress = '0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6';
-                const getListingPriceData = '0x12e85585'; // Signature de getListingPrice()
-
-                const listingPriceHex = await window.ethereum.request({
-                    method: 'eth_call',
-                    params: [{
-                        to: contractAddress,
-                        data: getListingPriceData
-                    }, 'latest']
-                });
-
-                const listingPrice = parseInt(listingPriceHex, 16) / 1e18;
-                result.innerHTML += `<p><strong>Prix de listing :</strong> ${listingPrice} ETH</p>`;
-
             } catch (error) {
-                result.innerHTML = `<p style="color: red;">❌ Erreur : ${error.message}</p>`;
-                console.error('Erreur complète:', error);
+                statusDiv.innerHTML += `<br>❌ Erreur: ${error.message}`;
             }
         }
+
+        // Test automatique au chargement
+        window.onload = testConnection;
     </script>
 </body>
 </html>

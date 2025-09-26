@@ -39,8 +39,8 @@ const NFTCard = ({ nft, badge, onClick }) => {
 
   const handleCardClick = () => {
     if (onClick) {
-      // Incrémenter les vues quand on clique sur la carte
-      const newViews = incrementNFTViews(nft);
+      // Incrémenter les vues quand on clique sur la carte (avec timer de 10s par utilisateur)
+      const newViews = incrementNFTViews(nft, walletAddress || 'anonymous');
       setViewsCount(newViews);
       onClick(nft);
     }

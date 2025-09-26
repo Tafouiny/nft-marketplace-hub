@@ -4,8 +4,9 @@ import './Home.css';
 import NFTCard from '../../components/NFTCard/NFTCard';
 import { Search, Filter, Grid, List, ShoppingBag, TrendingUp, Star, Activity } from 'lucide-react';
 import { useAppContext } from '../../App';
-import { fetchMarketplaceNFTs, buyNFT } from '../../utils/contract';
-import { getSubmittedNFTs } from '../../utils/storage';
+import { fetchMarketplaceNFTs, buyNFT, getMostExpensiveNFTLast24h, getNFTDetails } from '../../utils/contract';
+import { getSubmittedNFTs, getMostLikedNFT } from '../../utils/storage';
+import { ethers } from 'ethers';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -28,15 +29,66 @@ const Home = () => {
     avgPrice: 0
   });
 
+  // NFTs en vedette
+  const [featuredNFTs, setFeaturedNFTs] = useState({
+    mostExpensive: null,
+    mostLiked: null,
+    loading: true
+  });
+
   // Charger tous les NFTs au montage
   useEffect(() => {
     loadMarketplaceNFTs();
+    loadFeaturedNFTs();
   }, []);
 
   // Filtrer quand les critères changent
   useEffect(() => {
     filterAndSortNFTs();
   }, [searchQuery, priceFilter, sortBy, nfts]);
+
+  const loadFeaturedNFTs = async () => {
+    try {
+      console.log('🌟 Chargement des NFTs en vedette...');
+
+      // Charger en parallèle le NFT le plus cher vendu et le plus liké
+      const [mostExpensive, mostLiked] = await Promise.all([
+        getMostExpensiveNFTLast24h().catch(err => {
+          console.warn('Erreur NFT le plus cher:', err);
+          return null;
+        }),
+        (async () => {
+          try {
+            const liked = getMostLikedNFT();
+            if (liked && liked.source === 'blockchain') {
+              // Si c'est un NFT blockchain, récupérer les détails complets
+              const details = await getNFTDetails(liked.tokenId);
+              return { ...details, likesCount: liked.likesCount };
+            }
+            return liked;
+          } catch (err) {
+            console.warn('Erreur NFT le plus liké:', err);
+            return null;
+          }
+        })()
+      ]);
+
+      setFeaturedNFTs({
+        mostExpensive,
+        mostLiked,
+        loading: false
+      });
+
+      console.log('🌟 NFTs en vedette chargés:', { mostExpensive, mostLiked });
+    } catch (error) {
+      console.error('Erreur chargement NFTs en vedette:', error);
+      setFeaturedNFTs({
+        mostExpensive: null,
+        mostLiked: null,
+        loading: false
+      });
+    }
+  };
 
   const loadMarketplaceNFTs = async () => {
     setLoading(true);
@@ -183,14 +235,77 @@ const Home = () => {
 
     try {
       setLoading(true);
+
+      // Validation des données du NFT avant l'achat
+      console.log('🔍 Validation du NFT avant achat...');
+      const { getContractReadOnly } = await import('../../utils/contract');
+      const { contract } = await getContractReadOnly();
+
+      // Vérifier que le NFT est toujours en vente
+      const currentMarketItem = await contract.getMarketItem(nft.tokenId);
+
+      if (!currentMarketItem.listed) {
+        alert('❌ Ce NFT n\'est plus en vente');
+        loadMarketplaceNFTs(); // Rafraîchir la liste
+        return;
+      }
+
+      if (currentMarketItem.sold) {
+        alert('❌ Ce NFT a déjà été vendu');
+        loadMarketplaceNFTs(); // Rafraîchir la liste
+        return;
+      }
+
+      // Vérifier que le prix n'a pas changé
+      const currentPriceETH = parseFloat(ethers.utils.formatEther(currentMarketItem.price));
+      if (Math.abs(currentPriceETH - nft.price) > 0.0001) { // tolérance de 0.0001 ETH
+        const confirmPriceChange = confirm(
+          `⚠️ Le prix de ce NFT a changé!\n` +
+          `Prix affiché: ${nft.price} ETH\n` +
+          `Prix actuel: ${currentPriceETH} ETH\n\n` +
+          `Voulez-vous continuer avec le nouveau prix?`
+        );
+
+        if (!confirmPriceChange) {
+          loadMarketplaceNFTs(); // Rafraîchir la liste
+          return;
+        }
+
+        // Utiliser le prix actuel pour l'achat
+        nft.price = currentPriceETH;
+      }
+
+      // Procéder à l'achat avec les données validées
       await buyNFT(nft.tokenId, nft.price);
       alert('🎉 NFT acheté avec succès !');
 
-      // Recharger la liste
-      loadMarketplaceNFTs();
+      // Recharger la liste et les NFTs en vedette
+      await Promise.all([
+        loadMarketplaceNFTs(),
+        loadFeaturedNFTs()
+      ]);
+
     } catch (error) {
       console.error('❌ Erreur achat:', error);
-      alert('Erreur lors de l\'achat: ' + error.message);
+
+      // Messages d'erreur plus spécifiques
+      let errorMessage = 'Erreur lors de l\'achat';
+
+      if (error.message.includes('Please submit the asking price')) {
+        errorMessage = 'Le prix soumis ne correspond pas au prix demandé';
+      } else if (error.message.includes('Item not listed for sale')) {
+        errorMessage = 'Ce NFT n\'est plus en vente';
+        loadMarketplaceNFTs(); // Rafraîchir automatiquement
+      } else if (error.message.includes('Item already sold')) {
+        errorMessage = 'Ce NFT a déjà été vendu';
+        loadMarketplaceNFTs(); // Rafraîchir automatiquement
+      } else if (error.message.includes('Solde insuffisant')) {
+        errorMessage = error.message;
+      } else {
+        errorMessage = `Erreur: ${error.message}`;
+      }
+
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -215,6 +330,65 @@ const Home = () => {
                 <p>💡 Connectez votre wallet pour acheter des NFTs</p>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* NFTs en vedette */}
+        <div className="featured-section">
+          <h2 className="featured-title">🌟 NFTs en vedette</h2>
+          <div className="featured-grid">
+            {/* NFT le plus cher vendu dans les dernières 24h */}
+            <div className="featured-item">
+              <h3 className="featured-subtitle">
+                💰 Plus cher vendu (24h)
+              </h3>
+              {featuredNFTs.loading ? (
+                <div className="featured-loading">Chargement...</div>
+              ) : featuredNFTs.mostExpensive ? (
+                <div className="featured-nft" onClick={() => handleNFTClick(featuredNFTs.mostExpensive)}>
+                  <NFTCard
+                    nft={featuredNFTs.mostExpensive}
+                    badge={{ type: 'trending', text: `${featuredNFTs.mostExpensive.salePrice} ETH` }}
+                    onClick={() => handleNFTClick(featuredNFTs.mostExpensive)}
+                  />
+                  <div className="featured-info">
+                    <p>Vendu pour <strong>{featuredNFTs.mostExpensive.salePrice} ETH</strong></p>
+                    <p className="featured-date">
+                      {new Date(featuredNFTs.mostExpensive.saleDate).toLocaleDateString('fr-FR')}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="featured-empty">
+                  <p>Aucune vente récente</p>
+                </div>
+              )}
+            </div>
+
+            {/* NFT le plus liké */}
+            <div className="featured-item">
+              <h3 className="featured-subtitle">
+                ❤️ Plus populaire
+              </h3>
+              {featuredNFTs.loading ? (
+                <div className="featured-loading">Chargement...</div>
+              ) : featuredNFTs.mostLiked ? (
+                <div className="featured-nft" onClick={() => handleNFTClick(featuredNFTs.mostLiked)}>
+                  <NFTCard
+                    nft={featuredNFTs.mostLiked}
+                    badge={{ type: 'trending', text: `${featuredNFTs.mostLiked.likesCount} ❤️` }}
+                    onClick={() => handleNFTClick(featuredNFTs.mostLiked)}
+                  />
+                  <div className="featured-info">
+                    <p><strong>{featuredNFTs.mostLiked.likesCount} like{featuredNFTs.mostLiked.likesCount > 1 ? 's' : ''}</strong></p>
+                  </div>
+                </div>
+              ) : (
+                <div className="featured-empty">
+                  <p>Aucun NFT liké</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
