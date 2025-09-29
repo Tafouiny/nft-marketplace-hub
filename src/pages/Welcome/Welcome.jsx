@@ -4,7 +4,7 @@ import './Welcome.css';
 import NFTCard from '../../components/NFTCard/NFTCard';
 import { Search, ArrowRight, Users, Package, TrendingUp } from 'lucide-react';
 import { useAppContext } from '../../App';
-import { fetchMarketplaceNFTs, fetchAllMarketplaceNFTs } from '../../utils/contract';
+import { fetchMarketplaceNFTs, fetchAllNFTsIncludingAuctions } from '../../utils/contract';
 import { getSubmittedNFTs } from '../../utils/storage';
 import { getCachedMarketplaceStats } from '../../services/marketplaceStatsService';
 import { getRecommendations } from '../../services/statsService';
@@ -36,7 +36,7 @@ const Welcome = () => {
       console.log('Recommandations reçues:', recommendations);
 
       // 2. Charger TOUS les NFTs de la blockchain pour chercher les recommandés
-      const allBlockchainNFTs = await fetchAllMarketplaceNFTs().catch(err => {
+      const allBlockchainNFTs = await fetchAllNFTsIncludingAuctions().catch(err => {
         console.warn('Erreur chargement blockchain complète:', err);
         return [];
       });

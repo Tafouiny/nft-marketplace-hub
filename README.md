@@ -5,8 +5,8 @@ Un marketplace NFT décentralisé moderne construit avec React et Ethereum, perm
 ## 📊 Statistiques en Temps Réel
 
 <!-- MARKETPLACE_STATS_START -->
-- **NFTs en Vente**: 2
-- **Dernière Mise à Jour**: 29/09/2025 02:50:15
+- **NFTs en Vente**: 0
+- **Dernière Mise à Jour**: 29/09/2025 13:49:56
 <!-- MARKETPLACE_STATS_END -->
 
 ## 🚀 Fonctionnalités
@@ -170,6 +170,6 @@ Pour toute question ou problème :
 
 ---
 
-**Construit avec ❤️ par [Tafouiny et tine29i]**
+**Construit par [Tafouiny et tine29i]**
 
-*Dernière mise à jour automatique : 29/09/2025 02:50:15*
+*Dernière mise à jour automatique : 29/09/2025 13:49:56*

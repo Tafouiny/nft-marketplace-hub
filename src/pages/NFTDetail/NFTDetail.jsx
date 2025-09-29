@@ -20,10 +20,11 @@ import {
   ArrowUpRight,
   Zap,
   ShoppingBag,
-  Hash
+  Hash,
+  Gavel
 } from 'lucide-react';
 import { useAppContext } from '../../App';
-import { getNFTDetails, withdrawNFT, listNFTForSale, buyNFT, getNFTHistory } from '../../utils/contract';
+import { getNFTDetails, withdrawNFT, listNFTForSale, buyNFT, getNFTHistory, startAuction, endAuction, placeBid, getRealTokenOwner } from '../../utils/contract';
 import { getSubmittedNFTs, updateSubmittedNFT } from '../../utils/storage';
 import { getNFTStats, incrementNFTViews, toggleNFTLike } from '../../services/statsService';
 import { getNFTImageUrl } from '../../utils/ipfsHelpers';
@@ -46,12 +47,40 @@ const NFTDetail = () => {
   const [stats, setStats] = useState({ views: 0, likes: 0, likedBy: [] });
   const [isLiked, setIsLiked] = useState(false);
 
+  // États pour les enchères
+  const [showAuctionModal, setShowAuctionModal] = useState(false);
+  const [auctionStartingPrice, setAuctionStartingPrice] = useState('');
+  const [auctionDuration, setAuctionDuration] = useState('0'); // 0 = 1 minute par défaut
+
+  // États pour enchérir
+  const [showBidModal, setShowBidModal] = useState(false);
+  const [bidAmount, setBidAmount] = useState('');
+
+  // État pour la vraie propriété blockchain
+  const [realTokenOwner, setRealTokenOwner] = useState(null);
+
   // Charger le NFT et son historique
   useEffect(() => {
     loadNFTDetails();
     loadNFTHistory();
     loadNFTStats();
+    loadRealTokenOwner();
   }, [id, selectedNFT]);
+
+  // Charger la vraie propriété blockchain
+  const loadRealTokenOwner = async () => {
+    if (!id.startsWith('local-')) {
+      try {
+        const tokenId = parseInt(id);
+        const owner = await getRealTokenOwner(tokenId);
+        setRealTokenOwner(owner);
+        console.log('Vrai propriétaire du token', tokenId, ':', owner);
+        console.log('Wallet utilisateur:', walletAddress);
+      } catch (error) {
+        console.error('Erreur chargement propriétaire réel:', error);
+      }
+    }
+  };
 
   // Charger les stats du NFT
   const loadNFTStats = async () => {
@@ -189,12 +218,20 @@ const NFTDetail = () => {
   // Calculer si l'utilisateur est propriétaire
   const isOwner = isWalletConnected && (
     id.startsWith('local-') || // Tout NFT local appartient à l'utilisateur connecté
-    (walletAddress && nft?.owner && walletAddress.toLowerCase() === nft.owner.toLowerCase()) ||
-    // Pour NFTs blockchain: seulement si on est le propriétaire actuel ET pas vendu
-    (walletAddress && nft?.creator && walletAddress.toLowerCase() === nft.creator.toLowerCase() && !nft?.sold) ||
-    // Ou si on est le vendeur ET le NFT est encore en vente (pas vendu)
-    (walletAddress && nft?.seller && walletAddress.toLowerCase() === nft.seller.toLowerCase() && nft?.forSale && !nft?.sold)
+    // Pour NFTs blockchain: vérifier la vraie propriété selon la blockchain
+    (walletAddress && realTokenOwner && walletAddress.toLowerCase() === realTokenOwner.toLowerCase())
   );
+
+  // Debug: afficher les informations de propriété
+  console.log('=== DEBUG PROPRIÉTÉ NFT ===');
+  console.log('NFT ID:', id);
+  console.log('Wallet utilisateur:', walletAddress);
+  console.log('Vrai propriétaire blockchain:', realTokenOwner);
+  console.log('NFT owner (marketplace):', nft?.owner);
+  console.log('NFT seller:', nft?.seller);
+  console.log('NFT forSale:', nft?.forSale);
+  console.log('isOwner calculé:', isOwner);
+  console.log('=========================');
 
   // Migrer vers la blockchain - RÉACTIVÉ
 const handleMigrateToBlockchain = async () => {
@@ -519,6 +556,171 @@ const handleMigrateToBlockchain = async () => {
     }
   };
 
+  // Gérer l'ouverture du modal d'enchères
+  const handleStartAuction = () => {
+    if (!isWalletConnected) {
+      alert('Connectez votre wallet pour lancer une enchère');
+      return;
+    }
+    setShowAuctionModal(true);
+  };
+
+  // Confirmer et lancer l'enchère
+  const handleConfirmAuction = async () => {
+    if (!auctionStartingPrice || parseFloat(auctionStartingPrice) <= 0) {
+      alert('Veuillez entrer un prix de départ valide');
+      return;
+    }
+
+    // Vérifier si le NFT est en vente - si oui, il faut d'abord le retirer
+    if (nft.forSale && !nft.sold) {
+      const needWithdraw = window.confirm(
+        `Ce NFT est actuellement en vente. Il faut d'abord le retirer de la vente avant de le mettre aux enchères.\n\nVoulez-vous le retirer automatiquement ?`
+      );
+
+      if (!needWithdraw) return;
+
+      try {
+        console.log('Retrait du NFT de la vente avant enchère...');
+        await withdrawNFT(nft.tokenId);
+        alert('NFT retiré de la vente avec succès !');
+
+        // Attendre un peu et recharger les détails
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await loadNFTDetails();
+        await loadRealTokenOwner();
+
+      } catch (error) {
+        console.error('Erreur retrait vente:', error);
+        alert('Erreur lors du retrait de la vente. Veuillez réessayer.');
+        return;
+      }
+    }
+
+    const confirmMessage = `Lancer une enchère pour "${nft.name}" ?\n\nPrix de départ: ${auctionStartingPrice} ETH\nDurée: ${getDurationText(auctionDuration)}\n\nCette action nécessite des frais de gas.`;
+    if (!window.confirm(confirmMessage)) return;
+
+    setIsProcessing(true);
+    try {
+      console.log('Lancement de l\'enchère:', {
+        tokenId: nft.tokenId,
+        startingPrice: auctionStartingPrice,
+        duration: auctionDuration,
+        realOwner: realTokenOwner,
+        userWallet: walletAddress
+      });
+
+      // Appeler la fonction startAuction du contrat
+      const result = await startAuction(nft.tokenId, auctionStartingPrice, parseInt(auctionDuration));
+
+      alert(`🎯 Enchère lancée avec succès !\n\nPrix de départ: ${auctionStartingPrice} ETH\nDurée: ${getDurationText(auctionDuration)}\n\nTransaction: ${result.transactionHash}`);
+
+      setShowAuctionModal(false);
+      setAuctionStartingPrice('');
+      setAuctionDuration('0');
+
+      // Recharger les détails du NFT
+      loadNFTDetails();
+      loadRealTokenOwner();
+
+    } catch (error) {
+      console.error('Erreur lancement enchère:', error);
+      alert('Erreur lors du lancement de l\'enchère: ' + (error.message || 'Erreur inconnue'));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Obtenir le texte de la durée
+  const getDurationText = (duration) => {
+    switch (duration) {
+      case '0': return '1 minute';
+      case '1': return '5 minutes';
+      case '2': return '10 minutes';
+      case '3': return '30 minutes';
+      default: return '1 minute';
+    }
+  };
+
+  // Gérer l'enchère d'un visiteur
+  const handlePlaceBid = () => {
+    if (!isWalletConnected) {
+      alert('Connectez votre wallet pour enchérir');
+      return;
+    }
+    setBidAmount('');
+    setShowBidModal(true);
+  };
+
+  // Confirmer l'enchère
+  const handleConfirmBid = async () => {
+    if (!bidAmount || parseFloat(bidAmount) <= 0) {
+      alert('Veuillez entrer un montant valide');
+      return;
+    }
+
+    const minimumBid = nft.highestBid && parseFloat(nft.highestBid) > 0
+      ? parseFloat(nft.highestBid)
+      : parseFloat(nft.startingPrice || nft.price || 0);
+
+    if (parseFloat(bidAmount) <= minimumBid) {
+      alert(`Votre enchère doit être supérieure à ${minimumBid} ETH`);
+      return;
+    }
+
+    const confirmMessage = `Placer une enchère de ${bidAmount} ETH pour "${nft.name}" ?\n\nEnchère minimale: ${minimumBid} ETH\n\nCette action nécessite des frais de gas.`;
+    if (!window.confirm(confirmMessage)) return;
+
+    setIsProcessing(true);
+    try {
+      console.log('Placement de l\'enchère:', {
+        tokenId: nft.tokenId,
+        bidAmount: bidAmount
+      });
+
+      // Appeler la fonction placeBid du contrat
+      await placeBid(nft.tokenId, bidAmount);
+
+      alert(`🎯 Enchère de ${bidAmount} ETH placée avec succès !`);
+
+      setShowBidModal(false);
+      setBidAmount('');
+
+      // Recharger les détails du NFT
+      loadNFTDetails();
+
+    } catch (error) {
+      console.error('Erreur placement enchère:', error);
+      alert('Erreur lors du placement de l\'enchère: ' + (error.message || 'Erreur inconnue'));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Finaliser une enchère (pour le propriétaire)
+  const handleEndAuction = async () => {
+    if (!window.confirm(`Finaliser l'enchère pour "${nft.name}" ?`)) return;
+
+    setIsProcessing(true);
+    try {
+      console.log('Finalisation de l\'enchère:', { tokenId: nft.tokenId });
+
+      // Appeler la fonction endAuction du contrat
+      await endAuction(nft.tokenId);
+
+      alert(`🎯 Enchère finalisée avec succès !`);
+
+      // Recharger les détails du NFT
+      loadNFTDetails();
+
+    } catch (error) {
+      console.error('Erreur finalisation enchère:', error);
+      alert('Erreur lors de la finalisation de l\'enchère: ' + (error.message || 'Erreur inconnue'));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // États de chargement et d'erreur
   if (loading) {
     return (
@@ -661,7 +863,35 @@ const handleMigrateToBlockchain = async () => {
                     {isOwner ? (
                       // PROPRIÉTAIRE
                       <div className="owner-actions">
-                        {nft.forSale && !nft.sold ? (
+                        {nft.inAuction ? (
+                          // NFT en enchères - proposer de retirer
+                          (() => {
+                            const isExpired = nft.endTime && Math.floor(Date.now() / 1000) > nft.endTime;
+                            return (
+                              <div className="auction-owner-actions">
+                                {isExpired ? (
+                                  <button
+                                    className="btn btn-primary btn-large"
+                                    onClick={handleEndAuction}
+                                    disabled={isProcessing}
+                                  >
+                                    <Gavel size={20} />
+                                    Finaliser l'enchère
+                                  </button>
+                                ) : (
+                                  <button
+                                    className="btn btn-secondary btn-large"
+                                    onClick={() => alert('Fonctionnalité "Annuler enchère" à implémenter')}
+                                    disabled={isProcessing}
+                                  >
+                                    <Gavel size={20} />
+                                    Retirer des enchères
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()
+                        ) : nft.forSale && !nft.sold ? (
                           <button
                             className="btn btn-secondary btn-large"
                             onClick={handleWithdrawFromSale}
@@ -670,20 +900,54 @@ const handleMigrateToBlockchain = async () => {
                             Retirer de la vente
                           </button>
                         ) : (
-                          <button
-                            className="btn btn-primary btn-large"
-                            onClick={handleListForSale}
-                            disabled={isProcessing}
-                          >
-                            <Tag size={20} />
-                            Mettre en vente
-                          </button>
+                          <div className="owner-sell-actions">
+                            <button
+                              className="btn btn-primary btn-large"
+                              onClick={handleListForSale}
+                              disabled={isProcessing}
+                            >
+                              <Tag size={20} />
+                              Mettre en vente
+                            </button>
+                            <button
+                              className="btn btn-secondary btn-large"
+                              onClick={handleStartAuction}
+                              disabled={isProcessing}
+                            >
+                              <Gavel size={20} />
+                              Vendre aux enchères
+                            </button>
+                          </div>
                         )}
                       </div>
                     ) : (
                       // VISITEUR
                       <div className="buyer-actions">
-                        {nft.forSale ? (
+                        {nft.inAuction ? (
+                          // NFT en enchères - proposer d'enchérir
+                          (() => {
+                            const isExpired = nft.endTime && Math.floor(Date.now() / 1000) > nft.endTime;
+                            if (isExpired) {
+                              return (
+                                <div className="auction-expired">
+                                  <AlertCircle size={20} />
+                                  <span>Cette enchère est expirée</span>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <button
+                                  className="btn btn-primary btn-large"
+                                  onClick={handlePlaceBid}
+                                  disabled={isProcessing}
+                                >
+                                  <Gavel size={20} />
+                                  {isProcessing ? 'Enchère en cours...' : 'Enchérir'}
+                                </button>
+                              );
+                            }
+                          })()
+                        ) : nft.forSale ? (
                           <button
                             className="btn btn-primary btn-large"
                             onClick={handleBuyNFT}
@@ -827,18 +1091,149 @@ const handleMigrateToBlockchain = async () => {
                 />
               </div>
               <div className="modal-actions">
-                <button 
+                <button
                   className="btn btn-secondary"
                   onClick={() => setShowListingModal(false)}
                 >
                   Annuler
                 </button>
-                <button 
+                <button
                   className="btn btn-primary"
                   onClick={confirmListing}
                   disabled={!listingPrice || parseFloat(listingPrice) <= 0}
                 >
                   Confirmer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal d'enchères */}
+        {showAuctionModal && (
+          <div className="modal-overlay" onClick={() => setShowAuctionModal(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h2>
+                <Gavel size={24} />
+                Lancer une enchère
+              </h2>
+              <div className="modal-content">
+                <div className="auction-form">
+                  <div className="form-group">
+                    <label>Prix de départ (ETH)</label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      placeholder="Ex: 1.0"
+                      value={auctionStartingPrice}
+                      onChange={(e) => setAuctionStartingPrice(e.target.value)}
+                    />
+                    <small>Le prix minimum pour commencer les enchères</small>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Durée de l'enchère</label>
+                    <select
+                      value={auctionDuration}
+                      onChange={(e) => setAuctionDuration(e.target.value)}
+                      className="duration-select"
+                    >
+                      <option value="0">1 minute</option>
+                      <option value="1">5 minutes</option>
+                      <option value="2">10 minutes</option>
+                      <option value="3">30 minutes</option>
+                    </select>
+                    <small>Durée pendant laquelle les utilisateurs peuvent enchérir</small>
+                  </div>
+
+                  <div className="auction-summary">
+                    <div className="summary-item">
+                      <Clock size={16} />
+                      <span>Durée: {getDurationText(auctionDuration)}</span>
+                    </div>
+                    <div className="summary-item">
+                      <DollarSign size={16} />
+                      <span>Prix de départ: {auctionStartingPrice || '0'} ETH</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowAuctionModal(false)}
+                >
+                  Annuler
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleConfirmAuction}
+                  disabled={!auctionStartingPrice || parseFloat(auctionStartingPrice) <= 0 || isProcessing}
+                >
+                  {isProcessing ? 'Lancement...' : 'Lancer l\'enchère'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal d'enchère pour visiteurs */}
+        {showBidModal && (
+          <div className="modal-overlay" onClick={() => setShowBidModal(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h2>
+                <Gavel size={24} />
+                Placer une enchère
+              </h2>
+
+              <div className="bid-nft-info">
+                <img
+                  src={getNFTImageUrl(nft) || '/placeholder-nft.jpg'}
+                  alt={nft.name}
+                  className="bid-nft-image"
+                />
+                <div className="bid-nft-details">
+                  <h3>{nft.name}</h3>
+                  <p>Token ID: #{nft.tokenId || nft.id}</p>
+                  <p>
+                    Enchère minimum: {' '}
+                    {nft.highestBid && parseFloat(nft.highestBid) > 0
+                      ? `${nft.highestBid} ETH`
+                      : `${nft.startingPrice || nft.price} ETH`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="modal-form">
+                <div className="form-group">
+                  <label htmlFor="bidAmount">Votre enchère (ETH)</label>
+                  <input
+                    id="bidAmount"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    value={bidAmount}
+                    onChange={(e) => setBidAmount(e.target.value)}
+                    placeholder="0.000"
+                    disabled={isProcessing}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowBidModal(false)}
+                  disabled={isProcessing}
+                >
+                  Annuler
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleConfirmBid}
+                  disabled={!bidAmount || parseFloat(bidAmount) <= 0 || isProcessing}
+                >
+                  {isProcessing ? 'Enchère en cours...' : `Enchérir ${bidAmount || '0'} ETH`}
                 </button>
               </div>
             </div>

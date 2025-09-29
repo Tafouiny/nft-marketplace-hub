@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import './NFTCard.css';
-import { TrendingUp, Clock, Heart, Eye } from 'lucide-react';
+import { TrendingUp, Clock, Heart, Eye, Gavel } from 'lucide-react';
 import { getNFTImageUrl } from '../../utils/ipfsHelpers';
 import { getNFTStats, toggleNFTLike } from '../../services/statsService';
 import { useAppContext } from '../../App';
 
-const NFTCard = ({ nft, badge, onClick }) => {
+const NFTCard = ({ nft, badge, onClick, onBid }) => {
   const { walletAddress, isWalletConnected } = useAppContext();
   const [isHovered, setIsHovered] = useState(false);
   const [stats, setStats] = useState({ views: 0, likes: 0, likedBy: [] });
@@ -43,6 +43,13 @@ const NFTCard = ({ nft, badge, onClick }) => {
     if (result.success) {
       setStats(prev => ({ ...prev, likes: result.likes }));
       setIsLiked(result.isLiked);
+    }
+  };
+
+  const handleBid = (e) => {
+    e.stopPropagation();
+    if (onBid) {
+      onBid(nft);
     }
   };
 
@@ -104,7 +111,9 @@ const NFTCard = ({ nft, badge, onClick }) => {
       <div className="nft-card-info">
         <div className="nft-card-header">
           <h3 className="nft-card-name">{nft.name}</h3>
-          {nft.forSale && !nft.sold ? (
+          {nft.inAuction ? (
+            <span className="nft-card-auction-badge">En enchère</span>
+          ) : nft.forSale && !nft.sold ? (
             <span className="nft-card-sale-badge">En vente</span>
           ) : (
             <span className="nft-card-not-sale-badge">Pas en vente</span>
@@ -117,13 +126,63 @@ const NFTCard = ({ nft, badge, onClick }) => {
         </div>
 
         <div className="nft-card-footer">
-          {/* Afficher le prix seulement si en vente ET pas vendu */}
-          {nft.forSale && !nft.sold && (
+          {/* Afficher les informations d'enchère */}
+          {nft.inAuction && (
+            <div className="nft-card-auction-info">
+              <div className="nft-card-price">
+                <span className="nft-card-price-label">Enchère actuelle</span>
+                <span className="nft-card-price-value">
+                  {nft.highestBid && parseFloat(nft.highestBid) > 0
+                    ? `${nft.highestBid} ETH`
+                    : `${nft.startingPrice || nft.price} ETH (Mise de départ)`}
+                </span>
+              </div>
+              {nft.endTime && (
+                <div className="nft-card-time-remaining">
+                  <Clock size={14} />
+                  {(() => {
+                    const currentTime = Math.floor(Date.now() / 1000);
+                    const timeRemaining = nft.endTime - currentTime;
+
+                    if (timeRemaining <= 0) {
+                      return <span className="expired">Enchère expirée</span>;
+                    }
+
+                    const minutes = Math.floor(timeRemaining / 60);
+                    const seconds = timeRemaining % 60;
+
+                    if (minutes > 0) {
+                      return <span>Se termine dans {minutes}min {seconds}s</span>;
+                    } else {
+                      return <span>Se termine dans {seconds}s</span>;
+                    }
+                  })()}
+                </div>
+              )}
+              {/* Bouton Enchérir pour les non-propriétaires (seulement si enchère active) */}
+              {walletAddress &&
+               walletAddress.toLowerCase() !== (nft.seller || nft.owner || '').toLowerCase() &&
+               nft.endTime &&
+               Math.floor(Date.now() / 1000) < nft.endTime && (
+                <button
+                  className="nft-card-bid-btn"
+                  onClick={handleBid}
+                >
+                  <Gavel size={16} />
+                  Enchérir
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Afficher le prix seulement si en vente ET pas vendu ET pas en enchère */}
+          {nft.forSale && !nft.sold && !nft.inAuction && (
             <div className="nft-card-price">
               <span className="nft-card-price-label">Prix actuel</span>
               <span className="nft-card-price-value">{nft.price} ETH</span>
             </div>
           )}
+
           {nft.category && (
             <span className="nft-card-category">{nft.category}</span>
           )}

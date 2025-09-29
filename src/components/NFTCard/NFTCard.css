@@ -137,6 +137,16 @@
   white-space: nowrap;
 }
 
+.nft-card-auction-badge {
+  background-color: #8B5CF6;
+  color: white;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .nft-card-token {
   display: flex;
   align-items: center;
@@ -191,4 +201,45 @@
   border-radius: var(--radius-md);
   font-size: var(--font-size-xs);
   font-weight: 500;
+}
+
+.nft-card-auction-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  flex: 1;
+}
+
+.nft-card-time-remaining {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-light);
+}
+
+.nft-card-time-remaining .expired {
+  color: #EF4444;
+  font-weight: 600;
+}
+
+.nft-card-bid-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  background-color: var(--color-accent);
+  color: white;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  transition: all var(--transition-fast);
+  align-self: flex-start;
+  margin-top: var(--spacing-xs);
+}
+
+.nft-card-bid-btn:hover {
+  background-color: var(--color-accent-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }

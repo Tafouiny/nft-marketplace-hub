@@ -1,56 +1,10 @@
 {
   "nfts": {
-    "1": {
-      "views": 3,
-      "likes": 0,
-      "likedBy": []
-    },
-    "2": {
-      "views": 4,
-      "likes": 1,
-      "likedBy": [
-        "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
-      ]
-    },
     "3": {
-      "views": 1,
-      "likes": 0,
-      "likedBy": []
-    },
-    "4": {
-      "views": 3,
-      "likes": 0,
-      "likedBy": []
-    },
-    "5": {
-      "views": 1,
-      "likes": 2,
-      "likedBy": [
-        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
-        "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
-      ]
-    },
-    "local-1759109329127": {
-      "views": 1,
-      "likes": 0,
-      "likedBy": []
-    },
-    "local-1759110076543": {
-      "views": 1,
-      "likes": 0,
-      "likedBy": []
-    },
-    "local-1759111511086": {
-      "views": 4,
-      "likes": 0,
-      "likedBy": []
-    },
-    "local-1759111149605": {
-      "views": 1,
+      "views": 45,
       "likes": 0,
       "likedBy": []
     }
   },
-  "lastUpdated": "2025-09-29T02:21:45.904Z",
-  "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+  "lastUpdated": "2025-09-29T13:49:09.888Z"
 }

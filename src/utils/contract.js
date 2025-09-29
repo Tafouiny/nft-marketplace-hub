@@ -20,9 +20,23 @@ const CONTRACT_ABI = [
     "function getTokenCreator(uint256 tokenId) public view returns (address)",
     "function getMarketItem(uint256 tokenId) public view returns (tuple(uint256 tokenId, address seller, address owner, uint256 price, bool sold, bool listed))",
     "function totalSupply() public view returns (uint256)",
+    // Fonctions d'enchères
+    "function startAuction(uint256 tokenId, uint256 startingPrice, uint8 duration) public",
+    "function placeBid(uint256 tokenId) public payable",
+    "function endAuction(uint256 tokenId) public",
+    "function withdrawBid(uint256 tokenId) public",
+    "function getAuction(uint256 tokenId) public view returns (tuple(uint256 auctionId, uint256 tokenId, address seller, uint256 startingPrice, uint256 highestBid, address highestBidder, uint256 startTime, uint256 endTime, uint8 duration, bool active, bool ended))",
+    "function fetchActiveAuctions() public view returns (tuple(uint256 auctionId, uint256 tokenId, address seller, uint256 startingPrice, uint256 highestBid, address highestBidder, uint256 startTime, uint256 endTime, uint8 duration, bool active, bool ended)[])",
+    "function isAuctionEnded(uint256 tokenId) public view returns (bool)",
+    "function getBidAmount(uint256 tokenId, address bidder) public view returns (uint256)",
+    // Events
     "event MarketItemCreated(uint256 indexed tokenId, address seller, address owner, uint256 price, bool sold)",
     "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
-    "event MarketItemSold(uint256 indexed tokenId, address seller, address buyer, uint256 price)"
+    "event MarketItemSold(uint256 indexed tokenId, address seller, address buyer, uint256 price)",
+    "event AuctionStarted(uint256 indexed auctionId, uint256 indexed tokenId, address seller, uint256 startingPrice, uint256 endTime, uint8 duration)",
+    "event BidPlaced(uint256 indexed auctionId, uint256 indexed tokenId, address bidder, uint256 amount)",
+    "event AuctionEnded(uint256 indexed auctionId, uint256 indexed tokenId, address winner, uint256 winningBid)",
+    "event BidWithdrawn(uint256 indexed auctionId, address bidder, uint256 amount)"
 ];
 
 // Obtenir le contrat avec signer (pour les transactions)
@@ -758,5 +772,322 @@ export const getNFTHistory = async (tokenId) => {
     } catch (error) {
         console.error('Erreur getNFTHistory:', error);
         return [];
+    }
+};
+
+// ============ FONCTIONS D'ENCHÈRES ============
+
+// Lancer une enchère
+export const startAuction = async (tokenId, startingPrice, duration) => {
+    try {
+        console.log('Lancement enchère:', { tokenId, startingPrice, duration });
+
+        const { contract } = await getContract();
+        const startingPriceWei = ethers.utils.parseEther(startingPrice.toString());
+
+        // Appeler la fonction startAuction du contrat
+        const transaction = await contract.startAuction(tokenId, startingPriceWei, duration);
+
+        console.log('Transaction envoyée:', transaction.hash);
+        const receipt = await transaction.wait();
+        console.log('Transaction confirmée:', receipt);
+
+        return {
+            success: true,
+            transactionHash: transaction.hash,
+            transactionRecord: receipt
+        };
+
+    } catch (error) {
+        console.error('Erreur startAuction:', error);
+        throw new Error('Erreur lors du lancement de l\'enchère');
+    }
+};
+
+// Placer une enchère
+export const placeBid = async (tokenId, bidAmount) => {
+    try {
+        console.log('Placement enchère:', { tokenId, bidAmount });
+
+        const { contract } = await getContract();
+        const bidAmountWei = ethers.utils.parseEther(bidAmount.toString());
+
+        // Appeler la fonction placeBid du contrat
+        const transaction = await contract.placeBid(tokenId, { value: bidAmountWei });
+
+        console.log('Transaction envoyée:', transaction.hash);
+        const receipt = await transaction.wait();
+        console.log('Transaction confirmée:', receipt);
+
+        return {
+            success: true,
+            transactionHash: transaction.hash,
+            transactionRecord: receipt
+        };
+
+    } catch (error) {
+        console.error('Erreur placeBid:', error);
+        throw new Error('Erreur lors du placement de l\'enchère');
+    }
+};
+
+// Terminer une enchère
+export const endAuction = async (tokenId) => {
+    try {
+        console.log('Fin enchère:', { tokenId });
+
+        const { contract } = await getContract();
+
+        // Appeler la fonction endAuction du contrat
+        const transaction = await contract.endAuction(tokenId);
+
+        console.log('Transaction envoyée:', transaction.hash);
+        const receipt = await transaction.wait();
+        console.log('Transaction confirmée:', receipt);
+
+        return {
+            success: true,
+            transactionHash: transaction.hash,
+            transactionRecord: receipt
+        };
+
+    } catch (error) {
+        console.error('Erreur endAuction:', error);
+        throw new Error('Erreur lors de la finalisation de l\'enchère');
+    }
+};
+
+// Retirer une enchère perdante
+export const withdrawBid = async (tokenId) => {
+    try {
+        console.log('Retrait enchère:', { tokenId });
+
+        const { contract } = await getContract();
+
+        // Appeler la fonction withdrawBid du contrat
+        const transaction = await contract.withdrawBid(tokenId);
+
+        console.log('Transaction envoyée:', transaction.hash);
+        const receipt = await transaction.wait();
+        console.log('Transaction confirmée:', receipt);
+
+        return {
+            success: true,
+            transactionHash: transaction.hash,
+            transactionRecord: receipt
+        };
+
+    } catch (error) {
+        console.error('Erreur withdrawBid:', error);
+        throw new Error('Erreur lors du retrait de l\'enchère');
+    }
+};
+
+// Obtenir les détails d'une enchère
+export const getAuctionDetails = async (tokenId) => {
+    try {
+        const { contract } = await getContractReadOnly();
+        const auction = await contract.getAuction(tokenId);
+
+        return {
+            auctionId: auction.auctionId.toString(),
+            tokenId: auction.tokenId.toString(),
+            seller: auction.seller,
+            startingPrice: ethers.utils.formatEther(auction.startingPrice),
+            highestBid: ethers.utils.formatEther(auction.highestBid),
+            highestBidder: auction.highestBidder,
+            startTime: auction.startTime.toNumber(),
+            endTime: auction.endTime.toNumber(),
+            duration: auction.duration,
+            active: auction.active,
+            ended: auction.ended
+        };
+
+    } catch (error) {
+        console.error('Erreur getAuctionDetails:', error);
+        return null;
+    }
+};
+
+// Récupérer toutes les enchères actives
+export const fetchActiveAuctions = async () => {
+    try {
+        const { contract } = await getContractReadOnly();
+        const auctions = await contract.fetchActiveAuctions();
+
+        return auctions.map(auction => ({
+            auctionId: auction.auctionId.toString(),
+            tokenId: auction.tokenId.toString(),
+            seller: auction.seller,
+            startingPrice: ethers.utils.formatEther(auction.startingPrice),
+            highestBid: ethers.utils.formatEther(auction.highestBid),
+            highestBidder: auction.highestBidder,
+            startTime: auction.startTime.toNumber(),
+            endTime: auction.endTime.toNumber(),
+            duration: auction.duration,
+            active: auction.active,
+            ended: auction.ended
+        }));
+
+    } catch (error) {
+        console.error('Erreur fetchActiveAuctions:', error);
+        return [];
+    }
+};
+
+// Vérifier si une enchère est terminée
+export const isAuctionEnded = async (tokenId) => {
+    try {
+        const { contract } = await getContractReadOnly();
+        return await contract.isAuctionEnded(tokenId);
+    } catch (error) {
+        console.error('Erreur isAuctionEnded:', error);
+        return false;
+    }
+};
+
+// Obtenir le montant de l'enchère d'un utilisateur
+export const getBidAmount = async (tokenId, bidderAddress) => {
+    try {
+        const { contract } = await getContractReadOnly();
+        const amount = await contract.getBidAmount(tokenId, bidderAddress);
+        return ethers.utils.formatEther(amount);
+    } catch (error) {
+        console.error('Erreur getBidAmount:', error);
+        return '0';
+    }
+};
+
+// Vérifier qui est le vrai propriétaire d'un NFT selon la blockchain
+export const getRealTokenOwner = async (tokenId) => {
+    try {
+        const { contract } = await getContractReadOnly();
+        const owner = await contract.ownerOf(tokenId);
+        return owner;
+    } catch (error) {
+        console.error('Erreur getRealTokenOwner:', error);
+        return null;
+    }
+};
+
+// Fonction pour récupérer TOUS les NFTs (marketplace + enchères)
+export const fetchAllNFTsIncludingAuctions = async () => {
+    try {
+        // 1. Récupérer les NFTs marketplace classiques
+        const marketplaceNFTs = await fetchAllMarketplaceNFTs();
+
+        // 2. Récupérer les enchères actives
+        const activeAuctions = await fetchActiveAuctions();
+
+        // 3. Convertir les enchères en format NFT et les ajouter
+        const auctionNFTs = await Promise.all(
+            activeAuctions.map(async (auction) => {
+                try {
+                    // Vérifier si l'enchère est vraiment active (pas expirée)
+                    const currentTime = Math.floor(Date.now() / 1000);
+                    const isExpired = currentTime > auction.endTime;
+
+                    // Si l'enchère est expirée, ne pas l'inclure dans les enchères actives
+                    if (isExpired && auction.active) {
+                        console.log(`Enchère ${auction.tokenId} expirée mais pas encore finalisée`);
+                        return null;
+                    }
+
+                    // Récupérer les métadonnées du NFT en enchères
+                    const tokenId = parseInt(auction.tokenId);
+                    const { contract } = await getContractReadOnly();
+                    const tokenURI = await contract.tokenURI(tokenId);
+
+                    let metadata = {
+                        name: `NFT #${tokenId}`,
+                        description: "NFT en enchères",
+                        image: ""
+                    };
+
+                    // Parser les métadonnées si possible
+                    if (tokenURI && tokenURI.startsWith('data:application/json;base64,')) {
+                        try {
+                            const jsonString = atob(tokenURI.split(',')[1]);
+                            metadata = JSON.parse(jsonString);
+                        } catch (e) {
+                            console.warn(`Erreur parsing métadonnées enchère ${tokenId}:`, e);
+                        }
+                    }
+
+                    return {
+                        id: tokenId,
+                        tokenId: tokenId,
+                        name: metadata.name || `NFT #${tokenId}`,
+                        description: metadata.description || "NFT en enchères",
+                        image: metadata.image || "",
+                        price: parseFloat(auction.highestBid) || parseFloat(auction.startingPrice),
+                        currentBid: parseFloat(auction.highestBid),
+                        startingPrice: parseFloat(auction.startingPrice),
+                        highestBid: auction.highestBid,
+                        highestBidder: auction.highestBidder,
+                        owner: auction.seller,
+                        seller: auction.seller,
+                        sold: false,
+                        forSale: false, // Pas en vente directe
+                        inAuction: true && !isExpired, // Marquer comme en enchères seulement si pas expirée
+                        endTime: auction.endTime,
+                        startTime: auction.startTime,
+                        isAuctionExpired: isExpired,
+                        auction: {
+                            auctionId: auction.auctionId,
+                            highestBid: auction.highestBid,
+                            highestBidder: auction.highestBidder,
+                            startTime: auction.startTime,
+                            endTime: auction.endTime,
+                            active: auction.active && !isExpired,
+                            ended: auction.ended || isExpired
+                        },
+                        category: metadata.attributes?.find(attr => attr.trait_type === 'Category')?.value || "Digital Art",
+                        isLocal: false,
+                        source: 'blockchain-auction',
+                        blockchainStatus: 'minted'
+                    };
+                } catch (error) {
+                    console.error(`Erreur traitement enchère ${auction.tokenId}:`, error);
+                    return null;
+                }
+            })
+        );
+
+        // 4. Filtrer les enchères nulles et combiner avec les NFTs marketplace
+        const validAuctionNFTs = auctionNFTs.filter(nft => nft !== null);
+
+        // 5. Éviter les doublons : un NFT ne peut pas être à la fois en vente ET en enchères
+        const allTokenIds = new Set();
+        const combinedNFTs = [];
+
+        // Ajouter d'abord les enchères (priorité)
+        validAuctionNFTs.forEach(nft => {
+            if (!allTokenIds.has(nft.tokenId)) {
+                allTokenIds.add(nft.tokenId);
+                combinedNFTs.push(nft);
+            }
+        });
+
+        // Ajouter ensuite les NFTs marketplace qui ne sont pas en enchères
+        marketplaceNFTs.forEach(nft => {
+            if (!allTokenIds.has(nft.tokenId)) {
+                allTokenIds.add(nft.tokenId);
+                combinedNFTs.push(nft);
+            }
+        });
+
+        console.log('NFTs combinés:', {
+            marketplace: marketplaceNFTs.length,
+            auctions: validAuctionNFTs.length,
+            total: combinedNFTs.length
+        });
+
+        return combinedNFTs;
+
+    } catch (error) {
+        console.error('Erreur fetchAllNFTsIncludingAuctions:', error);
+        // En cas d'erreur, retourner au moins les NFTs marketplace
+        return await fetchAllMarketplaceNFTs();
     }
 };

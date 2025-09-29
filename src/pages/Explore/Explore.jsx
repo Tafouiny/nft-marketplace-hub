@@ -5,7 +5,7 @@ import NFTCard from '../../components/NFTCard/NFTCard';
 import { Filter, Search, Grid, List } from 'lucide-react';
 import { categories, priceFilters } from '../../data/mockData';
 import { useAppContext } from '../../App';
-import { fetchAllMarketplaceNFTs } from '../../utils/contract';
+import { fetchAllNFTsIncludingAuctions, placeBid } from '../../utils/contract';
 import { getSubmittedNFTs } from '../../utils/storage';
 
 const Explore = () => {
@@ -22,6 +22,10 @@ const Explore = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showBidModal, setShowBidModal] = useState(false);
+  const [selectedNFTForBid, setSelectedNFTForBid] = useState(null);
+  const [bidAmount, setBidAmount] = useState('');
+  const [bidding, setBidding] = useState(false);
   const itemsPerPage = 6;
 
   // Charger les NFTs au montage du composant
@@ -39,8 +43,8 @@ const Explore = () => {
     setError('');
     
     try {
-      // 1. Charger TOUS les NFTs de la blockchain (pas seulement ceux en vente)
-      const marketplaceNFTs = await fetchAllMarketplaceNFTs().catch(err => {
+      // 1. Charger TOUS les NFTs de la blockchain (incluant les enchères)
+      const marketplaceNFTs = await fetchAllNFTsIncludingAuctions().catch(err => {
         console.warn('Erreur chargement marketplace blockchain:', err);
         return [];
       });
@@ -119,6 +123,8 @@ const Explore = () => {
       filtered = filtered.filter(nft => nft.forSale && !nft.sold);
     } else if (statusFilter === 'vendus') {
       filtered = filtered.filter(nft => nft.sold === true);
+    } else if (statusFilter === 'encheres') {
+      filtered = filtered.filter(nft => nft.inAuction === true);
     }
     // Si 'tous', on ne filtre pas par statut
 
@@ -141,6 +147,47 @@ const Explore = () => {
 
   const handleRefresh = () => {
     loadAllNFTs();
+  };
+
+  const handleBid = (nft) => {
+    setSelectedNFTForBid(nft);
+    setBidAmount('');
+    setShowBidModal(true);
+  };
+
+  const handleSubmitBid = async () => {
+    if (!bidAmount || parseFloat(bidAmount) <= 0) {
+      alert('Veuillez entrer un montant valide');
+      return;
+    }
+
+    const minimumBid = selectedNFTForBid.highestBid && parseFloat(selectedNFTForBid.highestBid) > 0
+      ? parseFloat(selectedNFTForBid.highestBid)
+      : parseFloat(selectedNFTForBid.startingPrice || selectedNFTForBid.price || 0);
+
+    if (parseFloat(bidAmount) <= minimumBid) {
+      alert(`Votre enchère doit être supérieure à ${minimumBid} ETH`);
+      return;
+    }
+
+    setBidding(true);
+    try {
+      await placeBid(selectedNFTForBid.tokenId || selectedNFTForBid.id, bidAmount);
+      alert(`Enchère de ${bidAmount} ETH placée avec succès !`);
+      setShowBidModal(false);
+      loadAllNFTs(); // Recharger les NFTs pour voir les nouvelles enchères
+    } catch (error) {
+      console.error('Erreur lors de l\'enchère:', error);
+      alert('Erreur lors de l\'enchère: ' + (error.message || 'Erreur inconnue'));
+    } finally {
+      setBidding(false);
+    }
+  };
+
+  const handleCloseBidModal = () => {
+    setShowBidModal(false);
+    setSelectedNFTForBid(null);
+    setBidAmount('');
   };
 
   // Pagination
@@ -289,6 +336,12 @@ const Explore = () => {
                 >
                   Vendus
                 </button>
+                <button
+                  className={`status-btn ${statusFilter === 'encheres' ? 'active' : ''}`}
+                  onClick={() => setStatusFilter('encheres')}
+                >
+                  Enchères
+                </button>
               </div>
             </div>
 
@@ -327,9 +380,10 @@ const Explore = () => {
             ) : (
               currentNfts.map(nft => (
                 <div key={`${nft.source}-${nft.id}`} className="nft-wrapper">
-                  <NFTCard 
+                  <NFTCard
                     nft={nft}
                     onClick={handleNFTClick}
+                    onBid={handleBid}
                     badge={nft.source === 'local' ? { type: 'new', text: 'Local' } : null}
                   />
                   {/* Badge source */}
@@ -383,6 +437,63 @@ const Explore = () => {
               <span>Blockchain: {nfts.filter(n => n.source === 'blockchain').length}</span>
               <span>Local: {nfts.filter(n => n.source === 'local').length}</span>
               <span>En vente: {nfts.filter(n => n.forSale).length}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Modal d'enchère */}
+        {showBidModal && selectedNFTForBid && (
+          <div className="modal-overlay" onClick={handleCloseBidModal}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h2>Placer une enchère</h2>
+              <div className="bid-nft-info">
+                <img
+                  src={selectedNFTForBid.image || selectedNFTForBid.imageDataUrl || '/placeholder-nft.jpg'}
+                  alt={selectedNFTForBid.name}
+                  className="bid-nft-image"
+                />
+                <div className="bid-nft-details">
+                  <h3>{selectedNFTForBid.name}</h3>
+                  <p>Token ID: #{selectedNFTForBid.tokenId || selectedNFTForBid.id}</p>
+                  <p>
+                    Enchère minimum: {' '}
+                    {selectedNFTForBid.highestBid && parseFloat(selectedNFTForBid.highestBid) > 0
+                      ? `${selectedNFTForBid.highestBid} ETH`
+                      : `${selectedNFTForBid.startingPrice || selectedNFTForBid.price} ETH`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bid-form">
+                <label htmlFor="bidAmount">Votre enchère (ETH):</label>
+                <input
+                  id="bidAmount"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  value={bidAmount}
+                  onChange={(e) => setBidAmount(e.target.value)}
+                  placeholder="0.000"
+                  disabled={bidding}
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleCloseBidModal}
+                  disabled={bidding}
+                >
+                  Annuler
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleSubmitBid}
+                  disabled={bidding || !bidAmount}
+                >
+                  {bidding ? 'Enchère en cours...' : `Enchérir ${bidAmount || '0'} ETH`}
+                </button>
+              </div>
             </div>
           </div>
         )}
